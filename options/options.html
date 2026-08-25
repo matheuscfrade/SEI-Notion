@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SEI Notion</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">SN</div>
+        <div>
+          <h1>SEI Notion</h1>
+          <p>Cada pessoa conecta o próprio Notion. Sem servidor no meio.</p>
+        </div>
+      </div>
+    </header>
+
+    <section class="card card-required">
+      <h2>1. URL raiz do SEI <span class="req-badge">obrigatório</span></h2>
+      <p class="muted">
+        Endereço base da instalação do SEI da sua instituição.
+        A extensão <strong>só funciona nesses sites</strong>.
+        O Chrome pede permissão apenas para eles.
+      </p>
+      <label class="field">
+        <span>Endereço(s) do SEI — um por linha</span>
+        <textarea
+          id="fldSeiSites"
+          rows="3"
+          placeholder="https://sei.sua-instituicao.gov.br"
+          spellcheck="false"
+          autocomplete="off"
+        ></textarea>
+      </label>
+      <p class="hint">
+        Ex.: <code>https://sei.ifmg.edu.br</code>
+        ou com caminho <code>https://www.orgao.gov.br/sei</code>.
+      </p>
+      <div class="btn-row">
+        <button type="button" id="btnSaveSeiSites" class="btn btn-primary">
+          Salvar e autorizar acesso ao SEI
+        </button>
+      </div>
+      <div class="status-box">
+        <div class="status-line"><span>Sites SEI</span><strong id="stSeiSites">nenhum</strong></div>
+        <div class="status-line"><span>Permissão</span><strong id="stSeiPerm">—</strong></div>
+        <div class="status-line"><span>Atuação no SEI</span><strong id="stSeiActive">inativa</strong></div>
+      </div>
+    </section>
+
+    <section class="card card-required">
+      <h2>2. Conectar o Notion <span class="req-badge">obrigatório</span></h2>
+      <p class="muted">
+        Você usa o <strong>seu</strong> workspace. Crie um token e cole abaixo.
+        A extensão guarda o token só neste navegador e fala direto com a API do Notion.
+      </p>
+
+      <ol class="steps">
+        <li>
+          Abra
+          <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener noreferrer">notion.so/my-integrations</a>
+          e crie uma integração <strong>interna</strong> (ou um token de acesso pessoal).
+        </li>
+        <li>
+          Capacidades: ler, inserir e atualizar conteúdo.
+        </li>
+        <li>
+          No Notion, abra o banco (database) que vai guardar os processos →
+          <strong>•••</strong> → <strong>Add connections</strong> → escolha a integração.
+          (Com token pessoal isso não é necessário se você já vê o banco.)
+        </li>
+        <li>Copie o token (começa com <code>ntn_</code> ou <code>secret_</code>) e cole aqui.</li>
+      </ol>
+
+      <label class="field">
+        <span>Token da integração / PAT</span>
+        <input
+          id="fldToken"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="ntn_… ou secret_…"
+        />
+      </label>
+      <label class="field">
+        <span>Seu nome nesta equipe</span>
+        <input
+          id="fldEditorName"
+          type="text"
+          maxlength="80"
+          placeholder="Ex.: Matheus Frade"
+          autocomplete="name"
+        />
+      </label>
+      <p class="hint">
+        Usado no bloqueio de edição: se duas pessoas abrirem o mesmo processo,
+        a segunda vê quem está editando. Cada navegador tem um identificador próprio.
+      </p>
+      <div class="btn-row">
+        <button type="button" id="btnConnectNotion" class="btn btn-primary">Conectar</button>
+        <button type="button" id="btnSaveName" class="btn btn-ghost-dark">Salvar nome</button>
+        <button type="button" id="btnClearToken" class="btn btn-ghost-dark">Remover token</button>
+      </div>
+      <div class="status-box">
+        <div class="status-line"><span>Notion</span><strong id="stNotion">não conectado</strong></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3. Banco de dados dos processos</h2>
+      <p class="muted">
+        Qualquer database serve. O ideal é ter uma propriedade de texto
+        <strong>Número SEI</strong>. Se não tiver, use
+        <em>Preparar este banco</em> — a extensão cria as colunas que faltam
+        (Número SEI, Tipo de processo, Status, Marcadores, Prazo, URL SEI, Observações e SEI lock).
+      </p>
+      <p class="muted">
+        Checklist: no banco, use <strong>Novo → Novo modelo</strong> e monte
+        a lista com <code>/tarefa</code>. No popup você escolhe o modelo num
+        seletor, ou escreve os itens na hora. Os itens ficam na página do
+        processo — dá para editar sem alterar o modelo.
+      </p>
+
+      <div class="btn-row">
+        <button type="button" id="btnListDs" class="btn btn-ghost-dark">Listar bancos visíveis</button>
+        <button type="button" id="btnRefreshCols" class="btn btn-ghost-dark">Atualizar colunas</button>
+        <button type="button" id="btnDisconnectDs" class="btn btn-ghost-dark">Desconectar este banco</button>
+      </div>
+      <label class="field">
+        <span>Banco compartilhado com a integração</span>
+        <select id="selDataSource">
+          <option value="">— conecte o Notion e liste os bancos —</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Ou cole o link / ID do database</span>
+        <input
+          id="fldDsUrl"
+          type="text"
+          spellcheck="false"
+          placeholder="https://www.notion.so/… ou o ID"
+        />
+      </label>
+      <div class="btn-row">
+        <button type="button" id="btnUseUrl" class="btn btn-ghost-dark">Usar este link</button>
+        <button type="button" id="btnPrepare" class="btn btn-ghost-dark">Preparar este banco</button>
+        <button type="button" id="btnSaveDs" class="btn btn-primary">Salvar banco e mapeamento</button>
+      </div>
+
+      <div id="mappingBox" class="mapping hidden">
+        <h3>Colunas do banco</h3>
+        <p class="hint" id="colCount">
+          As colunas mapeadas para os papéis do SEI são obrigatórias e possuem uma ordem fixa no topo:
+          <strong>Número SEI</strong>, <strong>Tipo de processo</strong>, <strong>Especificação</strong>,
+          <strong>Marcadores</strong>, <strong>Prazo</strong>, <strong>Atribuição</strong>,
+          <strong>Observações</strong> e <strong>URL SEI</strong>.
+          Colunas adicionais (extras) aparecem depois e podem ser reordenadas usando ↑↓.
+        </p>
+        <div id="columnsBox" class="columns-box">
+          <!-- Section 1: Papéis no SEI (Fixos) -->
+          <div class="mapping-section">
+            <h4 style="margin-top: 0; margin-bottom: 12px; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; font-size: 15px;">Mapeamento de Papéis (Obrigatórios)</h4>
+            <div class="roles-head" style="display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 12px; font-weight: 700; font-size: 13px; color: #475569; margin-bottom: 8px;">
+              <span>Papel no SEI</span>
+              <span>Coluna correspondente no Notion</span>
+              <span style="text-align: center;">Mostrar no popup</span>
+            </div>
+            <div id="fixedRolesBox" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px;">
+              <!-- Javascript will render the 8 rows here -->
+            </div>
+          </div>
+
+          <!-- Section 2: Colunas Extras no Popup -->
+          <div class="mapping-section">
+            <h4 style="margin-top: 16px; margin-bottom: 12px; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; font-size: 15px;">Colunas Adicionais no Popup (Opcionais)</h4>
+            <p class="hint" style="margin-bottom: 12px; font-size: 12px;">
+              As demais colunas do seu banco Notion que não possuem um papel no SEI podem ser exibidas no popup da extensão. Marque "Mostrar" e ordene-as com ↑↓.
+            </p>
+            <div class="col-head" aria-hidden="true" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; font-weight: 700; font-size: 13px; color: #475569; margin-bottom: 8px;">
+              <span>Coluna no Notion</span>
+              <span>Mostrar no popup</span>
+              <span>Ordem</span>
+            </div>
+            <div id="extraColumnsBox" style="display: flex; flex-direction: column; gap: 10px;">
+              <!-- Javascript will render the extra columns here -->
+            </div>
+          </div>
+        </div>
+
+        <div id="statusColorsCard" style="margin-top: 24px; border-top: 1px dashed #cbd5e1; padding-top: 16px;">
+          <h3>Cor do badge por Status (opcional)</h3>
+          <p class="hint">
+            Escolha uma coluna de seleção/texto do Notion para mudar a cor do botão "N" no SEI de acordo com o status do processo.
+          </p>
+          <div style="margin-bottom: 12px;">
+            <label class="field" style="margin: 0;">
+              <span>Coluna de Status/Seleção no Notion</span>
+              <select id="selStatusCol">
+                <option value="">— não usar cor por status (manter azul padrão) —</option>
+              </select>
+            </label>
+          </div>
+          <div id="statusColorsBox" class="status-colors-box hidden" style="margin-top: 12px;">
+            <p class="hint">Defina a cor para cada opção do Notion:</p>
+            <div id="statusOptionsList" class="status-options-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-box">
+        <div class="status-line"><span>Banco de Processos</span><strong id="stDs">nenhum</strong></div>
+        <div class="status-line"><span>Pronto para o SEI</span><strong id="stReady">não</strong></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>4. Banco de dados de Atividades (Kanban)</h2>
+      <p class="muted">
+        Opcional / Recomendado: conecte uma database de <strong>Atividades</strong> para ter um quadro Kanban
+        com drag-and-drop e checklists dentro de cada atividade no popup do processo.
+      </p>
+      <p class="muted">
+        A database de atividades precisa de uma coluna <strong>Relação</strong> apontando para o seu banco de Processos
+        e uma coluna <strong>Status</strong> (ou Seleção) para as etapas do Kanban.
+        Você pode usar o botão <em>Preparar este banco</em> para criá-las automaticamente.
+      </p>
+
+      <div class="btn-row">
+        <button type="button" id="btnListActDs" class="btn btn-ghost-dark">Listar bancos visíveis</button>
+        <button type="button" id="btnRefreshActCols" class="btn btn-ghost-dark">Atualizar colunas</button>
+        <button type="button" id="btnDisconnectActDs" class="btn btn-ghost-dark">Desconectar este banco</button>
+      </div>
+      <label class="field">
+        <span>Banco compartilhado com a integração</span>
+        <select id="selActDataSource">
+          <option value="">— selecione a database de atividades —</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Ou cole o link / ID do database de atividades</span>
+        <input
+          id="fldActDsUrl"
+          type="text"
+          spellcheck="false"
+          placeholder="https://www.notion.so/… ou o ID"
+        />
+      </label>
+      <div class="btn-row">
+        <button type="button" id="btnUseActUrl" class="btn btn-ghost-dark">Usar este link</button>
+        <button type="button" id="btnPrepareAct" class="btn btn-ghost-dark">Preparar este banco de atividades</button>
+        <button type="button" id="btnSaveActDs" class="btn btn-primary">Salvar banco de atividades</button>
+      </div>
+
+      <div id="actMappingBox" class="mapping hidden" style="margin-top: 18px;">
+        <h3>Mapeamento de Atividades</h3>
+        <p class="hint">
+          Selecione as colunas correspondentes no banco de atividades:
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+          <label class="field" style="margin: 0;">
+            <span>Título / Nome da Atividade <span class="req-badge">obrigatório</span></span>
+            <select id="selActTitleCol">
+              <option value="">— selecione —</option>
+            </select>
+          </label>
+
+          <label class="field" style="margin: 0;">
+            <span>Status / Colunas do Kanban <span class="req-badge">obrigatório</span></span>
+            <select id="selActStatusCol">
+              <option value="">— selecione —</option>
+            </select>
+          </label>
+
+          <label class="field" style="margin: 0;">
+            <span>Relação com Processos SEI <span class="req-badge">obrigatório</span></span>
+            <select id="selActRelCol">
+              <option value="">— selecione —</option>
+            </select>
+          </label>
+
+          <label class="field" style="margin: 0;">
+            <span>Atribuição / Responsável (opcional)</span>
+            <select id="selActAssigneeCol">
+              <option value="">— nenhum —</option>
+            </select>
+          </label>
+
+          <label class="field" style="margin: 0;">
+            <span>Prazo / Data de Entrega (opcional)</span>
+            <select id="selActDueCol">
+              <option value="">— nenhum —</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="actStatusPreviewBox" style="margin-top: 16px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h4 style="margin: 0 0 8px; font-size: 13px; color: #1e3a8a;">Colunas do Kanban detectadas:</h4>
+          <div id="actStatusColumnsList" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+        </div>
+      </div>
+
+      <div class="status-box">
+        <div class="status-line"><span>Banco de Atividades</span><strong id="stActDs">nenhum</strong></div>
+        <div class="status-line"><span>Pronto para o Kanban</span><strong id="stActReady">não</strong></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>5. Exibição no SEI</h2>
+      <p class="muted">
+        O botão <strong>N</strong> abre o <strong>mesmo popup</strong> na
+        Controle de Processos e no processo aberto.
+        No popup, <strong>⧉ Abrir em nova aba</strong> mostra o quadro em
+        tela cheia para trabalhar com mais espaço.
+      </p>
+    </section>
+
+    <footer class="page-footer">
+      <div class="credits">
+        Desenvolvido por <strong>Matheus Costa Frade</strong>
+      </div>
+      <div>SEI Notion v<span id="version">0.1.0</span></div>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <script src="../shared/sites.js"></script>
+  <script src="../shared/schema.js"></script>
+  <script src="../shared/storage.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

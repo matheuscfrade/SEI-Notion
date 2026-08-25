@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "SEI Notion",
+  "short_name": "SEI Notion",
+  "version": "0.1.0",
+  "description": "Integra o SEI ao Notion: cada pessoa conecta o próprio workspace e vê as páginas junto dos processos.",
+  "author": "Matheus Costa Frade",
+  "homepage_url": "https://github.com/matheuscfrade/SEI-Notion",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "SEI Notion",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://api.notion.com/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
+}

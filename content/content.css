@@ -1,0 +1,82 @@
+.sei-notion-hidden { display: none !important; }
+
+.sei-notion-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 5px;
+  padding: 0;
+  border: 1px solid #1e3a8a;
+  border-radius: 3px;
+  background: #fff;
+  color: #1e3a8a;
+  font: 800 9px/1 "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+  vertical-align: middle;
+  box-sizing: border-box;
+  position: relative;
+  top: -1px;
+}
+.sei-notion-trigger-process {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  font-size: 8px;
+  line-height: 1;
+  margin: 0 0 0 4px;
+  padding: 0;
+  vertical-align: middle;
+  position: relative;
+  top: 0;
+}
+.sei-notion-trigger.is-linked {
+  background: #1e3a8a;
+  color: #fff;
+  border-color: #1e3a8a;
+}
+.sei-notion-trigger.is-busy {
+  opacity: 1;
+  cursor: wait;
+  animation: sei-notion-badge-pulse 0.85s ease-in-out infinite;
+}
+@keyframes sei-notion-badge-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+.sei-notion-trigger:hover:not(.is-busy) {
+  background: #172554;
+  color: #fff;
+  border-color: #172554;
+}
+
+.sei-notion-trigger.is-linked.status-default { background: #64748b; border-color: #64748b; }
+.sei-notion-trigger.is-linked.status-default:hover:not(.is-busy) { background: #475569; border-color: #475569; }
+
+.sei-notion-trigger.is-linked.status-gray { background: #64748b; border-color: #64748b; }
+.sei-notion-trigger.is-linked.status-gray:hover:not(.is-busy) { background: #475569; border-color: #475569; }
+
+.sei-notion-trigger.is-linked.status-brown { background: #92400e; border-color: #92400e; }
+.sei-notion-trigger.is-linked.status-brown:hover:not(.is-busy) { background: #78350f; border-color: #78350f; }
+
+.sei-notion-trigger.is-linked.status-orange { background: #c2410c; border-color: #c2410c; }
+.sei-notion-trigger.is-linked.status-orange:hover:not(.is-busy) { background: #9a3412; border-color: #9a3412; }
+
+.sei-notion-trigger.is-linked.status-yellow { background: #a16207; border-color: #a16207; }
+.sei-notion-trigger.is-linked.status-yellow:hover:not(.is-busy) { background: #854d0e; border-color: #854d0e; }
+
+.sei-notion-trigger.is-linked.status-green { background: #15803d; border-color: #15803d; }
+.sei-notion-trigger.is-linked.status-green:hover:not(.is-busy) { background: #166534; border-color: #166534; }
+
+.sei-notion-trigger.is-linked.status-blue { background: #1d4ed8; border-color: #1d4ed8; }
+.sei-notion-trigger.is-linked.status-blue:hover:not(.is-busy) { background: #1e40af; border-color: #1e40af; }
+
+.sei-notion-trigger.is-linked.status-purple { background: #7e22ce; border-color: #7e22ce; }
+.sei-notion-trigger.is-linked.status-purple:hover:not(.is-busy) { background: #6b21a8; border-color: #6b21a8; }
+
+.sei-notion-trigger.is-linked.status-pink { background: #be185d; border-color: #be185d; }
+.sei-notion-trigger.is-linked.status-pink:hover:not(.is-busy) { background: #9d174d; border-color: #9d174d; }
+
+.sei-notion-trigger.is-linked.status-red { background: #b91c1c; border-color: #b91c1c; }
+.sei-notion-trigger.is-linked.status-red:hover:not(.is-busy) { background: #991b1b; border-color: #991b1b; }

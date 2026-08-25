@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SEI Notion</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <div class="logo">SN</div>
+    <div>
+      <strong>SEI Notion</strong>
+      <div class="muted">Processos no seu Notion</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="status">
+      <div class="status-line"><span>SEI</span><strong id="stSei">—</strong></div>
+      <div class="status-line"><span>Notion</span><strong id="stNotion">—</strong></div>
+      <div class="status-line"><span>Página</span><strong id="stPage">—</strong></div>
+      <div class="status-line"><span>Processo</span><strong id="stProc">—</strong></div>
+    </div>
+    <p class="lead" id="lead">
+      Nas opções: URL do SEI da instituição e o token do seu Notion.
+    </p>
+  </main>
+
+  <footer>
+    <button type="button" id="btnRefresh" class="btn">Atualizar esta página</button>
+    <button type="button" id="btnOptions" class="btn primary">Abrir opções</button>
+    <div class="credits">
+      Desenvolvido por <strong>Matheus Costa Frade</strong>
+    </div>
+  </footer>
+
+  <script src="../shared/sites.js"></script>
+  <script src="../shared/storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
