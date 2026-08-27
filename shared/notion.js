@@ -1280,6 +1280,24 @@
       .trim();
   }
 
+  async function ensureActivityOrderProperty(token, actId) {
+    if (!actId) return "";
+    const ds = await retrieveDataSource(token, actId);
+    const schema = { properties: ds.properties || {} };
+    const existing = Schema().findActivityOrderProperty(schema);
+    if (existing) return existing;
+    try {
+      await notionFetch(token, "/databases/" + actId, {
+        method: "PATCH",
+        body: { properties: { Ordem: { number: { format: "number" } } } }
+      });
+      invalidateSchemaCache(actId);
+      return "Ordem";
+    } catch (_) {
+      return "";
+    }
+  }
+
   async function importActivitiesFromTemplate(token, settings, data) {
     const actId = settings.activitiesDataSourceId;
     const mapping = settings.activitiesMapping;
@@ -1287,19 +1305,7 @@
       throw new Error("Configuração incompleta ou modelo não informado.");
     }
 
-    try {
-      const ds = await retrieveDataSource(token, actId);
-      const schema = { properties: ds.properties || {} };
-      if (!Schema().findActivityOrderProperty(schema)) {
-        await notionFetch(token, "/databases/" + actId, {
-          method: "PATCH",
-          body: { properties: { Ordem: { number: { format: "number" } } } }
-        });
-        invalidateSchemaCache(actId);
-      }
-    } catch (_) {
-      /* coluna Ordem é opcional se o banco não permitir PATCH */
-    }
+    await ensureActivityOrderProperty(token, actId);
 
     const templateId = data.templateId;
     const processPageId = data.processPageId;
@@ -1697,6 +1703,43 @@
     });
   }
 
+  async function reorderActivities(token, settings, items) {
+    const actId = settings.activitiesDataSourceId;
+    const mapping = settings.activitiesMapping;
+    const list = Array.isArray(items) ? items.filter((it) => it && it.activityId) : [];
+    if (!actId || !list.length) return { ok: true, updated: 0 };
+
+    const orderProp = await ensureActivityOrderProperty(token, actId);
+    const ds = await retrieveDataSource(token, actId);
+    const schema = { properties: ds.properties || {} };
+    const statusPropDef =
+      mapping && mapping.status ? Schema().findProperty(schema, mapping.status) : null;
+    const isStatusType = !!(statusPropDef && statusPropDef.type === "status");
+
+    await mapPool(list, 3, async (item) => {
+      const properties = {};
+      if (
+        orderProp &&
+        typeof item.sortIndex === "number" &&
+        Number.isFinite(item.sortIndex)
+      ) {
+        properties[orderProp] = { number: item.sortIndex };
+      }
+      if (mapping && mapping.status && item.statusName) {
+        properties[mapping.status] = isStatusType
+          ? { status: { name: item.statusName } }
+          : { select: { name: item.statusName } };
+      }
+      if (!Object.keys(properties).length) return;
+      await notionFetch(token, "/pages/" + encodeURIComponent(item.activityId), {
+        method: "PATCH",
+        body: { properties }
+      });
+    });
+
+    return { ok: true, updated: list.length };
+  }
+
   root.SeiNotionApi = {
     VERSION,
     parseNotionId,
@@ -1717,6 +1760,7 @@
     importActivitiesFromTemplate,
     updateActivity,
     updateActivityStatus,
+    reorderActivities,
     deleteActivity,
     acquireLock,
     releaseLock,

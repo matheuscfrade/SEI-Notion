@@ -200,6 +200,7 @@
       onImportActivityTemplate: (payload) => importActivityTemplate(nup, payload),
       onUpdateActivity: (payload) => updateActivity(nup, payload),
       onMoveActivity: (activityId, statusName) => moveActivity(nup, activityId, statusName),
+      onReorderActivities: (payload) => reorderActivities(nup, payload),
       onReorderColumns: (columnOrder) => reorderActivityColumns(columnOrder),
       onDeleteActivity: (activityId) => deleteActivity(nup, activityId),
       onToggleActivityTodo: (activityId, blockId, checked) =>
@@ -562,10 +563,19 @@
     state.error = null;
     SeiNotionPopup.setBusy(true, "Criando atividade…");
     try {
+      const statusName = payload && payload.statusName ? payload.statusName : "";
+      const sameCol = (state.activities || []).filter(
+        (a) => (a.statusName || "") === statusName
+      );
+      const maxIndex = sameCol.reduce((m, a) => {
+        return typeof a.sortIndex === "number" && a.sortIndex > m ? a.sortIndex : m;
+      }, -1);
       const res = await send("SEI_NOTION_CREATE_ACTIVITY", {
         payload: {
           processPageId: page.pageId,
-          ...payload
+          ...payload,
+          sortIndex:
+            typeof payload.sortIndex === "number" ? payload.sortIndex : maxIndex + 1
         }
       });
       if (!res?.ok) throw new Error(res?.error || "Falha ao criar atividade.");
@@ -664,6 +674,71 @@
         activityPageId: activityId,
         statusName
       });
+    } catch (err) {
+      state.error = err.message || String(err);
+      refreshPopup({ preserveForm: true });
+    }
+  }
+
+  function sameActivityOrder(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  async function reorderActivities(nup, payload) {
+    const activityId = payload && payload.activityId;
+    const statusName = payload && payload.statusName;
+    const orderedIds = payload && Array.isArray(payload.orderedIds) ? payload.orderedIds : [];
+    if (!activityId || !statusName || !orderedIds.length) return;
+
+    const moved = (state.activities || []).find((a) => a.activityId === activityId);
+    const prevStatus = moved ? moved.statusName || "" : "";
+    const statusChanged = prevStatus !== statusName;
+    const sortFn =
+      globalThis.SeiNotionSchema && SeiNotionSchema.sortActivities
+        ? SeiNotionSchema.sortActivities
+        : (list) => list;
+    if (!statusChanged) {
+      const prevOrder = sortFn(
+        (state.activities || []).filter((a) => (a.statusName || "") === prevStatus)
+      ).map((a) => a.activityId);
+      if (sameActivityOrder(prevOrder, orderedIds)) return;
+    }
+
+    orderedIds.forEach((id, i) => {
+      const a = (state.activities || []).find((x) => x.activityId === id);
+      if (!a) return;
+      a.sortIndex = i;
+      if (id === activityId) a.statusName = statusName;
+    });
+
+    const items = orderedIds.map((id, i) => {
+      const patch = { activityId: id, sortIndex: i };
+      if (id === activityId) patch.statusName = statusName;
+      return patch;
+    });
+
+    if (statusChanged) {
+      const remaining = sortFn(
+        (state.activities || []).filter(
+          (a) => a.activityId !== activityId && (a.statusName || "") === prevStatus
+        )
+      );
+      remaining.forEach((a, i) => {
+        a.sortIndex = i;
+        items.push({ activityId: a.activityId, sortIndex: i });
+      });
+    }
+
+    refreshPopup({ preserveForm: true });
+    try {
+      const res = await send("SEI_NOTION_REORDER_ACTIVITIES", { items });
+      if (res && res.ok === false) {
+        throw new Error(res.error || "Não foi possível reordenar as atividades.");
+      }
     } catch (err) {
       state.error = err.message || String(err);
       refreshPopup({ preserveForm: true });

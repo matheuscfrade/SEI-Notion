@@ -714,6 +714,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (type === "SEI_NOTION_REORDER_ACTIVITIES") {
+    (async () => {
+      const { token, settings } = await requireNotion();
+      const result = await Api.reorderActivities(
+        token,
+        settings,
+        message.items || []
+      );
+      sendResponse({ ok: true, ...result });
+    })().catch((err) => sendResponse(fail(err)));
+    return true;
+  }
+
   if (type === "SEI_NOTION_SAVE_ACTIVITIES_COLUMN_ORDER") {
     (async () => {
       await Storage.saveSettings({

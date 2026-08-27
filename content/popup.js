@@ -3,6 +3,7 @@
  */
 (function (root) {
   const HOST_ID = "sei-notion-modal-host";
+  let draggingActivityId = "";
 
   const CSS = `
     :host { all: initial; display: block; height: 100%; }
@@ -617,9 +618,27 @@
       transition: background 0.15s;
     }
     .sn-kanban-cards.is-dragover {
-      background: #e0f2fe;
-      border: 2px dashed #0284c7;
+      background: #f0f9ff;
+      box-shadow: inset 0 0 0 2px #7dd3fc;
       border-radius: 6px;
+    }
+    .sn-kanban-placeholder {
+      height: 4px;
+      margin: 1px 0;
+      background: #0284c7;
+      border-radius: 999px;
+      pointer-events: none;
+      flex-shrink: 0;
+    }
+    .sn-kanban-cards:has(.sn-kanban-placeholder) .sn-kanban-empty {
+      display: none;
+    }
+    .sn-kanban-empty {
+      padding: 12px 6px;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+      font-style: italic;
     }
     .sn-kanban-card {
       background: #fff;
@@ -645,6 +664,7 @@
     }
     .sn-kanban-card.is-dragging {
       opacity: 0.4;
+      cursor: grabbing;
     }
     .sn-kanban-card-top {
       display: flex;
@@ -2309,8 +2329,8 @@
                     <div class="sn-kanban-card-top">
                       <span class="sn-kanban-card-title">${esc(act.title)}</span>
                       <div class="sn-kanban-card-actions">
-                        <button type="button" class="sn-kanban-card-btn sn-kanban-card-edit" data-activity-id="${esc(act.activityId)}" title="Editar atividade"${dis}>✏️</button>
-                        <button type="button" class="sn-kanban-card-btn sn-kanban-card-del" data-activity-id="${esc(act.activityId)}" title="Excluir atividade"${dis}>×</button>
+                        <button type="button" class="sn-kanban-card-btn sn-kanban-card-edit" data-activity-id="${esc(act.activityId)}" title="Editar atividade" draggable="false"${dis}>✏️</button>
+                        <button type="button" class="sn-kanban-card-btn sn-kanban-card-del" data-activity-id="${esc(act.activityId)}" title="Excluir atividade" draggable="false"${dis}>×</button>
                       </div>
                     </div>
                     <div class="sn-kanban-card-meta">
@@ -2325,7 +2345,7 @@
                 `;
               })
               .join("")
-          : '<div style="padding: 12px 6px; text-align: center; font-size: 11px; color: #94a3b8; font-style: italic;">Arraste aqui</div>';
+          : '<div class="sn-kanban-empty">Arraste aqui</div>';
 
         return `
           <div class="sn-kanban-col">
@@ -3213,15 +3233,81 @@
       });
     });
 
-    // Drag & Drop
+    // Drag & Drop (coluna e ordem na coluna)
+    function clearKanbanPlaceholders() {
+      shadow.querySelectorAll(".sn-kanban-placeholder").forEach((el) => el.remove());
+      shadow.querySelectorAll(".sn-kanban-cards.is-dragover").forEach((el) => {
+        el.classList.remove("is-dragover");
+      });
+    }
+
+    function placeKanbanPlaceholder(dropZone, clientY) {
+      const cards = [...dropZone.querySelectorAll(".sn-kanban-card")].filter(
+        (c) => c.getAttribute("data-activity-id") !== draggingActivityId
+      );
+      let before = null;
+      for (let i = 0; i < cards.length; i += 1) {
+        const r = cards[i].getBoundingClientRect();
+        if (clientY < r.top + r.height / 2) {
+          before = cards[i];
+          break;
+        }
+      }
+      let ph = dropZone.querySelector(".sn-kanban-placeholder");
+      if (!ph) {
+        ph = document.createElement("div");
+        ph.className = "sn-kanban-placeholder";
+      }
+      if (before) {
+        if (ph.nextSibling !== before) dropZone.insertBefore(ph, before);
+      } else if (ph.parentNode !== dropZone || ph.nextSibling) {
+        dropZone.appendChild(ph);
+      }
+    }
+
+    function orderedIdsFromZone(dropZone, movedId) {
+      const ids = [];
+      let placed = false;
+      [...dropZone.children].forEach((el) => {
+        if (el.classList && el.classList.contains("sn-kanban-placeholder")) {
+          if (movedId && ids.indexOf(movedId) === -1) {
+            ids.push(movedId);
+            placed = true;
+          }
+          return;
+        }
+        if (!el.classList || !el.classList.contains("sn-kanban-card")) return;
+        const id = el.getAttribute("data-activity-id");
+        if (!id || id === movedId) return;
+        ids.push(id);
+      });
+      if (movedId && !placed && ids.indexOf(movedId) === -1) ids.push(movedId);
+      return ids;
+    }
+
     shadow.querySelectorAll(".sn-kanban-card:not(.is-editing)").forEach((card) => {
       card.addEventListener("dragstart", (ev) => {
-        if (ctx.locked) return;
-        ev.dataTransfer.setData("text/plain", card.getAttribute("data-activity-id"));
+        if (ctx.locked) {
+          ev.preventDefault();
+          return;
+        }
+        if (
+          ev.target &&
+          ev.target.closest &&
+          ev.target.closest("button, input, textarea, select, a, .sn-card-checklist")
+        ) {
+          ev.preventDefault();
+          return;
+        }
+        draggingActivityId = card.getAttribute("data-activity-id") || "";
+        ev.dataTransfer.setData("text/plain", draggingActivityId);
+        ev.dataTransfer.effectAllowed = "move";
         card.classList.add("is-dragging");
       });
       card.addEventListener("dragend", () => {
         card.classList.remove("is-dragging");
+        draggingActivityId = "";
+        clearKanbanPlaceholders();
       });
     });
 
@@ -3230,19 +3316,37 @@
         ev.preventDefault();
         ev.dataTransfer.dropEffect = "move";
         dropZone.classList.add("is-dragover");
+        shadow.querySelectorAll(".sn-kanban-cards.is-dragover").forEach((el) => {
+          if (el !== dropZone) el.classList.remove("is-dragover");
+        });
+        shadow.querySelectorAll(".sn-kanban-placeholder").forEach((el) => {
+          if (el.parentNode !== dropZone) el.remove();
+        });
+        placeKanbanPlaceholder(dropZone, ev.clientY);
       });
       dropZone.addEventListener("dragleave", (ev) => {
         if (!dropZone.contains(ev.relatedTarget)) {
           dropZone.classList.remove("is-dragover");
+          const ph = dropZone.querySelector(".sn-kanban-placeholder");
+          if (ph) ph.remove();
         }
       });
       dropZone.addEventListener("drop", (ev) => {
         ev.preventDefault();
-        dropZone.classList.remove("is-dragover");
-        if (ctx.locked) return;
-        const actId = ev.dataTransfer.getData("text/plain");
+        const actId =
+          draggingActivityId || ev.dataTransfer.getData("text/plain") || "";
         const targetStatus = dropZone.getAttribute("data-status-name");
-        if (actId && targetStatus && ctx.onMoveActivity) {
+        const orderedIds = orderedIdsFromZone(dropZone, actId);
+        clearKanbanPlaceholders();
+        draggingActivityId = "";
+        if (ctx.locked || !actId || !targetStatus) return;
+        if (ctx.onReorderActivities) {
+          ctx.onReorderActivities({
+            activityId: actId,
+            statusName: targetStatus,
+            orderedIds
+          });
+        } else if (ctx.onMoveActivity) {
           ctx.onMoveActivity(actId, targetStatus);
         }
       });
