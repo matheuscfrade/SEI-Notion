@@ -446,6 +446,7 @@
     const prev = state.pages.find((p) => p.pageId === pageId);
     state.creating = (prev && prev.processNumber) || patch.processNumber || null;
     state.error = null;
+    paint();
     SeiNotionPopup.setBusy(true, "Salvando…");
     try {
       const res = await send("SEI_NOTION_UPDATE", {
@@ -997,11 +998,25 @@
     }
   }
 
+  function currentBusyNup() {
+    if (state.creating) return state.creating;
+    if (!state.loading) return "";
+    try {
+      if (SeiNotionPopup && SeiNotionPopup.isOpen && SeiNotionPopup.isOpen()) {
+        return (SeiNotionPopup.processNumber && SeiNotionPopup.processNumber()) || "";
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return "";
+  }
+
   function handlers() {
     return {
       pages: state.pages,
       creating: state.creating,
       loading: state.loading,
+      busyProcessNumber: currentBusyNup(),
       error: state.error,
       mapping: state.mapping,
       displayMode: usePanelOnThisPage() ? "panel" : "popup",

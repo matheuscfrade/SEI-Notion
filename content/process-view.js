@@ -4,12 +4,35 @@
 (function (root) {
   const MARK = "data-sei-notion-process-trigger";
 
-  function pageFor(pages, nup) {
+  function sameNup(a, b) {
     const Schema = root.SeiNotionSchema;
-    if (Schema && Schema.sameNup) {
-      return (pages || []).find((p) => Schema.sameNup(p.processNumber, nup));
+    if (Schema && Schema.sameNup) return Schema.sameNup(a, b);
+    return a === b;
+  }
+
+  function pageFor(pages, nup) {
+    return (pages || []).find((p) => sameNup(p.processNumber, nup));
+  }
+
+  function isBusyFor(state, nup) {
+    const busyNup = (state && (state.busyProcessNumber || state.creating)) || "";
+    return !!(busyNup && nup && sameNup(busyNup, nup));
+  }
+
+  function applyBadgeClasses(btn, page, state, nup) {
+    btn.classList.toggle("is-linked", !!page);
+    btn.classList.toggle("is-busy", isBusyFor(state, nup));
+    [...btn.classList].forEach((c) => {
+      if (c.indexOf("status-") === 0) btn.classList.remove(c);
+    });
+    if (page && page.status) {
+      const mappedColor =
+        state.mapping &&
+        state.mapping.badgeColorMap &&
+        state.mapping.badgeColorMap[page.status.name];
+      const color = mappedColor || page.status.color || "default";
+      btn.classList.add("status-" + color);
     }
-    return (pages || []).find((p) => p.processNumber === nup);
   }
 
   function compactText(el) {
@@ -114,14 +137,7 @@
 
     const btn = ensureTrigger(anchor);
     const page = pageFor(state.pages, processNumber);
-    btn.className = "sei-notion-trigger sei-notion-trigger-process";
-    btn.classList.toggle("is-linked", !!page);
-    btn.classList.toggle("is-busy", state.creating === processNumber || !!state.loading);
-    if (page && page.status) {
-      const mappedColor = state.mapping && state.mapping.badgeColorMap && state.mapping.badgeColorMap[page.status.name];
-      const color = mappedColor || page.status.color || "default";
-      btn.classList.add("status-" + color);
-    }
+    applyBadgeClasses(btn, page, state, processNumber);
     btn.title =
       state.displayMode === "panel"
         ? page

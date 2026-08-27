@@ -1124,12 +1124,14 @@
 
     let relProp = Schema().findRelationProperty(schema, processDataSourceId);
     if (!relProp && processDataSourceId) {
-      patchProps["Processo SEI"] = {
+      patchProps["Número SEI"] = {
         relation: {
           database_id: processDataSourceId,
           single_property: {}
         }
       };
+    } else if (relProp && /^processo sei$/i.test(String(relProp).normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim())) {
+      patchProps[relProp] = { name: "Número SEI" };
     }
 
     let assProp = Schema().findProperty(schema, "Responsável") || Schema().findProperty(schema, "Atribuição");

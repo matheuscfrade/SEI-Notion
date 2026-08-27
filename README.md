@@ -13,7 +13,7 @@ Na **Controle de Processos** e no **processo aberto**:
 - um botão **N** ao lado do número (azul se já existe página)
 - o botão abre um **popup** para ver e editar especificação, status, prazo, marcadores, atribuição e observações
 - **Quadro de Atividades (Kanban)**: vincule um banco de dados de atividades conectado ao banco de processos por relação (`Relation`). Cada processo ganha um quadro Kanban completo com colunas de status, drag & drop direto no popup, exclusão e checklists internos expansíveis em cada atividade.
-- **Modelos de Atividades**: importe templates nativos do Notion cadastrados na database de atividades diretamente para o Kanban.
+- **Modelos de processos (atividades e checklists)**: no banco de atividades, crie um modelo com a lista de atividades e, em cada uma, tarefas (`/to-do`). No popup, **Importar atividades** aplica o modelo ao Kanban. Checklists também podem ser editados no próprio card.
 - **Salvar alterações** atualiza a página existente — não cria outra
 - se ainda não houver página, o popup tem **Criar página no Notion**
 
@@ -44,29 +44,34 @@ Informe a URL raiz da instituição, por exemplo `https://sei.ifmg.edu.br`, e cl
 
 Time no mesmo workspace: cada um cria o próprio token (ou PAT). Todos apontam para os **mesmos databases** compartilhados.
 
-### 3. Banco de dados de Processos
+### 3. Banco de dados de Processos (kit inicial)
+
+No Notion, crie um banco em tabela (ex.: *Processos SEI*), compartilhe com a integração (**••• → Conexões**) e, nas opções:
 
 - **Listar bancos visíveis** e escolher, ou colar o link/ID
-- **Preparar este banco** cria as colunas que faltarem:
-  - Número SEI (texto)
-  - Status
-  - Etiquetas
-  - Prazo
-  - URL SEI
-  - Observações
-  - Responsável (texto; no Papel no SEI escolha **Atribuição**)
-- Confira o mapeamento se o banco já existir com outros nomes. Em **Papel no SEI**, ligue a coluna de responsável a **Atribuição** para preencher com o login atribuído no processo.
+- **Preparar este banco** cria as colunas que faltarem (não apaga as existentes):
+  - **Número SEI** (obrigatória) — liga o processo do SEI ao card
+  - **Tipo de processo**, **Status** (recomendadas)
+  - **SEI lock** (sistema) — bloqueio de edição; não aparece no popup
+- O título da página no Notion usa o número do processo. A especificação do SEI ficou fora do escopo (não é extraída de forma confiável).
+- Marcadores, observações, URL SEI e responsável/prazo do *processo* não fazem mais parte do kit (responsável e prazo ficam nas atividades)
+- Se o banco já existir com outros nomes, associe cada campo à coluna correspondente
 - **Salvar banco e mapeamento**
 
-### 4. Banco de dados de Atividades (Kanban)
+### 4. Banco de dados de Atividades (Kanban, opcional)
 
-- Escolha ou cole o ID/link da database de atividades
-- **Preparar este banco** cria automaticamente as propriedades necessárias:
-  - Processo (Relation apontando para o Banco de Processos)
-  - Status (Status/Select com colunas de Kanban)
-- **Salvar banco de atividades**: a extensão passa a gerenciar e renderizar o Kanban com drag & drop e checklists por card no popup do SEI.
+Crie um segundo banco (ex.: *Atividades SEI*), compartilhe com a mesma integração e:
 
-O título da página usa a especificação do processo no SEI, quando houver; senão, o número.
+- **Preparar este banco de atividades** cria:
+  - **Status** (colunas do Kanban)
+  - **Número SEI** (Relation para o banco de processos) — obrigatória
+  - **Responsável**, **Prazo** (recomendadas)
+  - **Ordem** (sistema, posição dos cards)
+- O título já existe em todo banco Notion
+- Sem o kit: o banco precisa de título, Status (ou Seleção) e Relação com o banco de processos
+- **Salvar banco de atividades**
+
+O título da página no Notion usa o número do processo.
 
 ## Privacidade
 
@@ -88,4 +93,4 @@ Mesmo padrão do SEI Blocos / SEI Fluxo: URL do SEI configurável e content scri
 
 ## Versão
 
-**0.1.0** — MVP autoatendido (token próprio, mapeamento de colunas, lista + processo).
+**0.2.0** — Kanban com reordenação e scroll no arraste, opções reescritas para iniciantes, kit inicial alinhado ao recorte atual (Número SEI, tipo, status, lock).

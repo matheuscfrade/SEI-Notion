@@ -13,13 +13,18 @@
         <div class="logo">SN</div>
         <div>
           <h1>SEI Notion</h1>
-          <p>Cada pessoa conecta o próprio Notion. Sem servidor no meio.</p>
+          <p>Liga os processos do SEI às páginas do seu Notion. Configure em três passos — não precisa ser especialista.</p>
         </div>
       </div>
     </header>
 
-    <section class="card card-required">
-      <h2>1. URL raiz do SEI <span class="req-badge">obrigatório</span></h2>
+    <section class="card card-fold card-required is-open" data-fold="sei">
+      <button type="button" class="fold-head" aria-expanded="true">
+        <span class="fold-title">1. URL raiz do SEI <span class="req-badge">obrigatório</span></span>
+        <span class="fold-summary" id="foldSumSei"></span>
+        <span class="fold-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="fold-body">
       <p class="muted">
         Endereço base da instalação do SEI da sua instituição.
         A extensão <strong>só funciona nesses sites</strong>.
@@ -49,31 +54,47 @@
         <div class="status-line"><span>Permissão</span><strong id="stSeiPerm">—</strong></div>
         <div class="status-line"><span>Atuação no SEI</span><strong id="stSeiActive">inativa</strong></div>
       </div>
+      </div>
     </section>
 
-    <section class="card card-required">
-      <h2>2. Conectar o Notion <span class="req-badge">obrigatório</span></h2>
+    <section class="card card-fold card-required is-open" data-fold="notion">
+      <button type="button" class="fold-head" aria-expanded="true">
+        <span class="fold-title">2. Conectar o Notion <span class="req-badge">obrigatório</span></span>
+        <span class="fold-summary" id="foldSumNotion"></span>
+        <span class="fold-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="fold-body">
       <p class="muted">
-        Você usa o <strong>seu</strong> workspace. Crie um token e cole abaixo.
-        A extensão guarda o token só neste navegador e fala direto com a API do Notion.
+        A extensão grava os processos <strong>na sua conta Notion</strong>.
+        Para isso o Notion pede uma chave de acesso (token) — é como uma senha só desta extensão.
+        O token fica neste navegador e não passa por nenhum servidor nosso.
       </p>
 
       <ol class="steps">
         <li>
           Abra
           <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener noreferrer">notion.so/my-integrations</a>
-          e crie uma integração <strong>interna</strong> (ou um token de acesso pessoal).
+          (faça login se pedir).
         </li>
         <li>
-          Capacidades: ler, inserir e atualizar conteúdo.
+          Clique em <strong>New integration</strong>. Dê um nome (ex.: SEI Notion),
+          escolha o workspace da equipe e salve. Deixe as permissões de
+          <strong>ler, inserir e atualizar conteúdo</strong> ligadas.
         </li>
         <li>
-          No Notion, abra o banco (database) que vai guardar os processos →
-          <strong>•••</strong> → <strong>Add connections</strong> → escolha a integração.
-          (Com token pessoal isso não é necessário se você já vê o banco.)
+          Copie o <strong>Internal Integration Secret</strong> (começa com <code>ntn_</code> ou <code>secret_</code>)
+          e cole no campo abaixo.
         </li>
-        <li>Copie o token (começa com <code>ntn_</code> ou <code>secret_</code>) e cole aqui.</li>
+        <li>
+          Depois, em cada banco de dados que a extensão for usar, abra o banco no Notion →
+          clique em <strong>•••</strong> (canto superior direito) →
+          <strong>Conexões</strong> (ou <em>Add connections</em>) → escolha a integração que você criou.
+          Sem esse passo a extensão <strong>não enxerga</strong> o banco.
+        </li>
       </ol>
+      <p class="hint">
+        Time no mesmo Notion: cada pessoa cria o próprio token e aponta para os <strong>mesmos bancos</strong> compartilhados.
+      </p>
 
       <label class="field">
         <span>Token da integração / PAT</span>
@@ -96,8 +117,8 @@
         />
       </label>
       <p class="hint">
-        Usado no bloqueio de edição: se duas pessoas abrirem o mesmo processo,
-        a segunda vê quem está editando. Cada navegador tem um identificador próprio.
+        Se duas pessoas abrirem o mesmo processo, a segunda vê este nome e não consegue salvar até a outra sair.
+        Isso usa a coluna <strong>SEI lock</strong> (o kit inicial cria essa coluna).
       </p>
       <div class="btn-row">
         <button type="button" id="btnConnectNotion" class="btn btn-primary">Conectar</button>
@@ -107,22 +128,59 @@
       <div class="status-box">
         <div class="status-line"><span>Notion</span><strong id="stNotion">não conectado</strong></div>
       </div>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>3. Banco de dados dos processos</h2>
+    <section class="card card-fold is-open" data-fold="processos">
+      <button type="button" class="fold-head" aria-expanded="true">
+        <span class="fold-title">3. Banco de processos</span>
+        <span class="fold-summary" id="foldSumDs"></span>
+        <span class="fold-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="fold-body">
       <p class="muted">
-        Qualquer database serve. O ideal é ter uma propriedade de texto
-        <strong>Número SEI</strong>. Se não tiver, use
-        <em>Preparar este banco</em> — a extensão cria as colunas que faltam
-        (Número SEI, Tipo de processo, Status, Marcadores, Prazo, URL SEI, Observações e SEI lock).
+        Um <strong>banco</strong> no Notion é uma tabela (como uma planilha). Cada linha será um processo do SEI.
       </p>
-      <p class="muted">
-        Checklist: no banco, use <strong>Novo → Novo modelo</strong> e monte
-        a lista com <code>/tarefa</code>. No popup você escolhe o modelo num
-        seletor, ou escreve os itens na hora. Os itens ficam na página do
-        processo — dá para editar sem alterar o modelo.
-      </p>
+
+      <div class="callout callout-kit">
+        <h3>Começando do zero</h3>
+        <ol class="steps">
+          <li>
+            No Notion, <strong>Nova página</strong> → digite <code>/database</code> → escolha
+            <strong>Table view</strong> (tabela). Nomeie a página, por exemplo <em>Processos SEI</em>.
+          </li>
+          <li>
+            Compartilhe o banco com a integração: <strong>••• → Conexões</strong> → a integração do passo 2.
+          </li>
+          <li>
+            Nesta página, liste os bancos, escolha o que você criou e clique em
+            <strong>Preparar este banco</strong> — esse botão <em>é</em> o kit inicial:
+            ele cria as colunas da lista abaixo.
+          </li>
+          <li>Confira o mapeamento sugerido e clique em <strong>Salvar banco e mapeamento</strong>.</li>
+        </ol>
+        <p class="hint" style="margin-top: 10px;">
+          Já tem um banco? Escolha-o (ou cole o link). Se faltar alguma coluna do kit,
+          <strong>Preparar este banco</strong> cria só o que ainda não existe.
+        </p>
+      </div>
+
+      <div class="kit-cols">
+        <h3>O que «Preparar este banco» faz</h3>
+        <p class="hint" style="margin: 0 0 10px;">
+          Cria no Notion as colunas que faltam e sugere o mapeamento. <strong>Não apaga</strong> colunas suas.
+          Não cria Marcadores, Observações, URL SEI, Especificação nem responsável/prazo do processo
+          (responsável e prazo ficam nas <strong>atividades</strong>).
+          O título da página no Notion fica com o número do processo.
+        </p>
+        <ul class="kit-list" id="processKitList">
+          <li data-kit="processNumber"><span class="pill pill-req">obrigatória</span> <strong>Número SEI</strong> — liga o processo do SEI ao card.</li>
+          <li data-kit="processType"><span class="pill pill-rec">recomendada</span> <strong>Tipo de processo</strong> — vem do SEI, só leitura.</li>
+          <li data-kit="status"><span class="pill pill-rec">recomendada</span> <strong>Status</strong> — situação do processo e cor do botão N.</li>
+          <li data-kit="lock"><span class="pill pill-sys">sistema</span> <strong>SEI lock</strong> — avisa se outra pessoa está editando. Não aparece no popup. Sem ela, duas pessoas podem salvar ao mesmo tempo.</li>
+        </ul>
+        <p class="hint" id="lockStatusHint"></p>
+      </div>
 
       <div class="btn-row">
         <button type="button" id="btnListDs" class="btn btn-ghost-dark">Listar bancos visíveis</button>
@@ -144,40 +202,41 @@
           placeholder="https://www.notion.so/… ou o ID"
         />
       </label>
+      <p class="hint prepare-hint">
+        <strong>Preparar este banco</strong> = aplicar o kit no banco selecionado
+        (Número SEI, Tipo de processo, Status e SEI lock, se ainda não existirem).
+        Depois disso, <strong>Salvar banco e mapeamento</strong> grava a escolha nesta extensão.
+      </p>
       <div class="btn-row">
         <button type="button" id="btnUseUrl" class="btn btn-ghost-dark">Usar este link</button>
-        <button type="button" id="btnPrepare" class="btn btn-ghost-dark">Preparar este banco</button>
+        <button type="button" id="btnPrepare" class="btn btn-kit" title="Cria as colunas do kit inicial no banco escolhido, sem apagar as existentes">Preparar este banco</button>
         <button type="button" id="btnSaveDs" class="btn btn-primary">Salvar banco e mapeamento</button>
       </div>
 
       <div id="mappingBox" class="mapping hidden">
-        <h3>Colunas do banco</h3>
+        <h3>O que cada coluna significa</h3>
         <p class="hint" id="colCount">
-          As colunas mapeadas para os papéis do SEI são obrigatórias e possuem uma ordem fixa no topo:
-          <strong>Número SEI</strong>, <strong>Tipo de processo</strong>, <strong>Especificação</strong>,
-          <strong>Marcadores</strong>, <strong>Prazo</strong>, <strong>Atribuição</strong>,
-          <strong>Observações</strong> e <strong>URL SEI</strong>.
-          Colunas adicionais (extras) aparecem depois e podem ser reordenadas usando ↑↓.
+          Associe cada informação do SEI a uma coluna do Notion.
+          Depois de <strong>Preparar este banco</strong>, o mapeamento já vem preenchido — confira e salve.
+          Só o <strong>Número SEI</strong> é obrigatório. Tipo de processo e status são recomendados.
         </p>
         <div id="columnsBox" class="columns-box">
-          <!-- Section 1: Papéis no SEI (Fixos) -->
           <div class="mapping-section">
-            <h4 style="margin-top: 0; margin-bottom: 12px; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; font-size: 15px;">Mapeamento de Papéis (Obrigatórios)</h4>
-            <div class="roles-head" style="display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 12px; font-weight: 700; font-size: 13px; color: #475569; margin-bottom: 8px;">
-              <span>Papel no SEI</span>
-              <span>Coluna correspondente no Notion</span>
-              <span style="text-align: center;">Mostrar no popup</span>
+            <h4 class="map-h">Campos padrão</h4>
+            <div class="roles-head">
+              <span>Campo</span>
+              <span>Coluna no Notion</span>
+              <span>Mostrar no popup</span>
             </div>
-            <div id="fixedRolesBox" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px;">
-              <!-- Javascript will render the 8 rows here -->
-            </div>
+            <div id="fixedRolesBox"></div>
+            <div id="lockRowBox"></div>
           </div>
 
           <!-- Section 2: Colunas Extras no Popup -->
           <div class="mapping-section">
-            <h4 style="margin-top: 16px; margin-bottom: 12px; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; font-size: 15px;">Colunas Adicionais no Popup (Opcionais)</h4>
+            <h4 class="map-h">Outras colunas do seu banco (opcional)</h4>
             <p class="hint" style="margin-bottom: 12px; font-size: 12px;">
-              As demais colunas do seu banco Notion que não possuem um papel no SEI podem ser exibidas no popup da extensão. Marque "Mostrar" e ordene-as com ↑↓.
+              Colunas que não são dos campos padrão podem aparecer no popup. Marque “Mostrar” e ordene com ↑↓.
             </p>
             <div class="col-head" aria-hidden="true" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; font-weight: 700; font-size: 13px; color: #475569; margin-bottom: 8px;">
               <span>Coluna no Notion</span>
@@ -191,9 +250,9 @@
         </div>
 
         <div id="statusColorsCard" style="margin-top: 24px; border-top: 1px dashed #cbd5e1; padding-top: 16px;">
-          <h3>Cor do badge por Status (opcional)</h3>
+          <h3>Cor do botão N por Status (opcional)</h3>
           <p class="hint">
-            Escolha uma coluna de seleção/texto do Notion para mudar a cor do botão "N" no SEI de acordo com o status do processo.
+            Usa a coluna de Status do mapeamento acima. Se quiser, escolha outra coluna de seleção só para a cor do botão N no SEI.
           </p>
           <div style="margin-bottom: 12px;">
             <label class="field" style="margin: 0;">
@@ -214,19 +273,69 @@
         <div class="status-line"><span>Banco de Processos</span><strong id="stDs">nenhum</strong></div>
         <div class="status-line"><span>Pronto para o SEI</span><strong id="stReady">não</strong></div>
       </div>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>4. Banco de dados de Atividades (Kanban)</h2>
+    <section class="card card-fold is-open" data-fold="atividades">
+      <button type="button" class="fold-head" aria-expanded="true">
+        <span class="fold-title">4. Banco de atividades (Kanban) <span class="opt-badge">opcional</span></span>
+        <span class="fold-summary" id="foldSumAct"></span>
+        <span class="fold-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="fold-body">
       <p class="muted">
-        Opcional / Recomendado: conecte uma database de <strong>Atividades</strong> para ter um quadro Kanban
-        com drag-and-drop e checklists dentro de cada atividade no popup do processo.
+        Se quiser um quadro de tarefas dentro de cada processo, crie um <strong>segundo banco</strong> no Notion
+        (ex.: <em>Atividades SEI</em>) e conecte-o aqui. Sem este passo o botão N continua funcionando, só não mostra Kanban.
       </p>
-      <p class="muted">
-        A database de atividades precisa de uma coluna <strong>Relação</strong> apontando para o seu banco de Processos
-        e uma coluna <strong>Status</strong> (ou Seleção) para as etapas do Kanban.
-        Você pode usar o botão <em>Preparar este banco</em> para criá-las automaticamente.
-      </p>
+
+      <div class="callout callout-kit">
+        <h3>Começando o Kanban</h3>
+        <ol class="steps">
+          <li>Salve primeiro o banco de <strong>processos</strong> (passo 3).</li>
+          <li>No Notion, crie outro banco em tabela (ex.: <em>Atividades SEI</em>) e compartilhe com a mesma integração.</li>
+          <li>
+            Nesta página, escolha esse banco e clique em <strong>Preparar este banco de atividades</strong> —
+            esse botão aplica o kit: cria as colunas da lista abaixo.
+          </li>
+        </ol>
+        <h3 style="margin-top: 12px;">O que «Preparar este banco de atividades» faz</h3>
+        <p class="hint" style="margin: 0 0 8px;">
+          Cria no Notion as colunas que faltam e sugere o mapeamento. Não apaga colunas suas.
+        </p>
+        <ul class="kit-list" style="margin-top: 10px;">
+          <li><span class="pill pill-req">obrigatória</span> <strong>Título</strong> — já existe em todo banco Notion (coluna Nome). O botão não cria essa.</li>
+          <li><span class="pill pill-req">obrigatória</span> <strong>Status</strong> — colunas do Kanban (A Fazer, Em Andamento, Concluído).</li>
+          <li><span class="pill pill-req">obrigatória</span> <strong>Número SEI</strong> — relação (Relation) apontando para o banco de processos.</li>
+          <li><span class="pill pill-rec">recomendada</span> <strong>Responsável</strong> e <strong>Prazo</strong>.</li>
+          <li><span class="pill pill-sys">sistema</span> <strong>Ordem</strong> — posição dos cards na coluna.</li>
+        </ul>
+        <p class="hint">
+          Sem o botão: o banco precisa ter título, Status (ou Seleção) e uma relação Número SEI com o banco de processos.
+        </p>
+      </div>
+
+      <div class="callout">
+        <h3>Modelos de processos: atividades e checklists</h3>
+        <p class="muted" style="margin: 0 0 8px;">
+          Um modelo é um “pacote” para um tipo de processo (ex.: <em>Pessoal: Férias</em>):
+          a lista de atividades do Kanban e, em cada atividade, o checklist.
+        </p>
+        <ol class="steps">
+          <li>
+            No banco de <strong>atividades</strong>, crie um <strong>modelo</strong>
+            (no Notion: <strong>••• → Modelos</strong>, ou uma página-modelo neste banco).
+            Dê o nome do tipo de processo.
+          </li>
+          <li>
+            Liste as atividades (um item ou título para cada uma).
+            Dentro de cada atividade, coloque as tarefas com <code>/to-do</code> — isso vira o checklist do card.
+          </li>
+          <li>
+            No popup do SEI, use <strong>Importar atividades</strong> e escolha o modelo.
+            Também dá para criar atividades na hora e marcar/acrescentar itens no checklist do próprio card.
+          </li>
+        </ol>
+      </div>
 
       <div class="btn-row">
         <button type="button" id="btnListActDs" class="btn btn-ghost-dark">Listar bancos visíveis</button>
@@ -248,9 +357,14 @@
           placeholder="https://www.notion.so/… ou o ID"
         />
       </label>
+      <p class="hint prepare-hint">
+        <strong>Preparar este banco de atividades</strong> = aplicar o kit no banco selecionado
+        (Status, relação Número SEI, Responsável, Prazo e Ordem, se ainda não existirem).
+        Depois, <strong>Salvar banco de atividades</strong> grava a escolha nesta extensão.
+      </p>
       <div class="btn-row">
         <button type="button" id="btnUseActUrl" class="btn btn-ghost-dark">Usar este link</button>
-        <button type="button" id="btnPrepareAct" class="btn btn-ghost-dark">Preparar este banco de atividades</button>
+        <button type="button" id="btnPrepareAct" class="btn btn-kit" title="Cria as colunas do kit de atividades no banco escolhido, sem apagar as existentes">Preparar este banco de atividades</button>
         <button type="button" id="btnSaveActDs" class="btn btn-primary">Salvar banco de atividades</button>
       </div>
 
@@ -276,7 +390,7 @@
           </label>
 
           <label class="field" style="margin: 0;">
-            <span>Relação com Processos SEI <span class="req-badge">obrigatório</span></span>
+            <span>Número SEI (relação com o banco de processos) <span class="req-badge">obrigatório</span></span>
             <select id="selActRelCol">
               <option value="">— selecione —</option>
             </select>
@@ -307,23 +421,29 @@
         <div class="status-line"><span>Banco de Atividades</span><strong id="stActDs">nenhum</strong></div>
         <div class="status-line"><span>Pronto para o Kanban</span><strong id="stActReady">não</strong></div>
       </div>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>5. Exibição no SEI</h2>
+    <section class="card card-fold" data-fold="uso">
+      <button type="button" class="fold-head" aria-expanded="false">
+        <span class="fold-title">5. Como usar no SEI</span>
+        <span class="fold-summary" id="foldSumUse">Botão N no SEI</span>
+        <span class="fold-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="fold-body">
       <p class="muted">
-        O botão <strong>N</strong> abre o <strong>mesmo popup</strong> na
-        Controle de Processos e no processo aberto.
-        No popup, <strong>⧉ Abrir em nova aba</strong> mostra o quadro em
-        tela cheia para trabalhar com mais espaço.
+        Recarregue a aba do SEI depois de salvar. Ao lado do número do processo aparece o botão
+        <strong>N</strong> (azul se já existe página no Notion). Clique para ver e editar o card.
+        Dentro do popup, <strong>⧉ Abrir em nova aba</strong> mostra o quadro em tela cheia.
       </p>
+      </div>
     </section>
 
     <footer class="page-footer">
       <div class="credits">
         Desenvolvido por <strong>Matheus Costa Frade</strong>
       </div>
-      <div>SEI Notion v<span id="version">0.1.0</span></div>
+      <div>SEI Notion v<span id="version">0.2.0</span></div>
     </footer>
   </div>
 

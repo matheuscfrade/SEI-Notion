@@ -4,12 +4,35 @@
 (function (root) {
   const MARK = "data-sei-notion-trigger";
 
-  function pageFor(pages, nup) {
+  function sameNup(a, b) {
     const Schema = root.SeiNotionSchema;
-    if (Schema && Schema.sameNup) {
-      return (pages || []).find((p) => Schema.sameNup(p.processNumber, nup));
+    if (Schema && Schema.sameNup) return Schema.sameNup(a, b);
+    return a === b;
+  }
+
+  function pageFor(pages, nup) {
+    return (pages || []).find((p) => sameNup(p.processNumber, nup));
+  }
+
+  function isBusyFor(state, nup) {
+    const busyNup = (state && (state.busyProcessNumber || state.creating)) || "";
+    return !!(busyNup && nup && sameNup(busyNup, nup));
+  }
+
+  function applyBadgeClasses(btn, page, state, nup) {
+    btn.classList.toggle("is-linked", !!page);
+    btn.classList.toggle("is-busy", isBusyFor(state, nup));
+    [...btn.classList].forEach((c) => {
+      if (c.indexOf("status-") === 0) btn.classList.remove(c);
+    });
+    if (page && page.status) {
+      const mappedColor =
+        state.mapping &&
+        state.mapping.badgeColorMap &&
+        state.mapping.badgeColorMap[page.status.name];
+      const color = mappedColor || page.status.color || "default";
+      btn.classList.add("status-" + color);
     }
-    return (pages || []).find((p) => p.processNumber === nup);
   }
 
   function cleanup(doc) {
@@ -34,24 +57,13 @@
   function paint(doc, state) {
     const d = doc || document;
     cleanup(d);
-    d.querySelectorAll("button.sei-notion-trigger:not(.sei-notion-fab)").forEach(
-      (el) => el.remove()
-    );
     const items = root.SeiNotionDom.findProcessAnchors(d);
+    const kept = new Set();
     items.forEach((item) => {
       const page = pageFor(state.pages, item.processNumber);
       const btn = ensureTrigger(item.anchor);
-      btn.className = "sei-notion-trigger";
-      btn.classList.toggle("is-linked", !!page);
-      btn.classList.toggle(
-        "is-busy",
-        state.creating === item.processNumber || !!state.loading
-      );
-      if (page && page.status) {
-        const mappedColor = state.mapping && state.mapping.badgeColorMap && state.mapping.badgeColorMap[page.status.name];
-        const color = mappedColor || page.status.color || "default";
-        btn.classList.add("status-" + color);
-      }
+      kept.add(btn);
+      applyBadgeClasses(btn, page, state, item.processNumber);
       btn.title = page
         ? "Abrir página do Notion"
         : "Criar / abrir no Notion";
@@ -80,6 +92,11 @@
         }
       };
     });
+    d.querySelectorAll("button.sei-notion-trigger:not(.sei-notion-fab)").forEach(
+      (el) => {
+        if (!kept.has(el)) el.remove();
+      }
+    );
     return items.map((i) => i.processNumber);
   }
 

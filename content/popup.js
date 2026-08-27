@@ -4,6 +4,12 @@
 (function (root) {
   const HOST_ID = "sei-notion-modal-host";
   let draggingActivityId = "";
+  let draggingFromStatus = "";
+  let dragPointerX = 0;
+  let dragPointerY = 0;
+  let dragScrollRaf = 0;
+  let dragScrollShadow = null;
+  let kanbanDragFrameHook = null;
 
   const CSS = `
     :host { all: initial; display: block; height: 100%; }
@@ -38,8 +44,9 @@
       width: min(860px, 98vw);
       max-width: 100%;
       max-height: calc(100vh - 72px);
-      overflow-x: hidden;
-      overflow-y: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
       background: #fff;
       border-radius: 14px;
       box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
@@ -53,6 +60,7 @@
       background: linear-gradient(135deg, #1e3a8a, #111827);
       color: #fff;
       min-width: 0;
+      flex-shrink: 0;
     }
     .sn-logo {
       width: 28px; height: 28px; border-radius: 8px;
@@ -72,7 +80,27 @@
       border: 0; background: transparent; color: #fff;
       font-size: 20px; line-height: 1; cursor: pointer; padding: 4px 8px;
     }
-    .sn-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .sn-body {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      min-width: 0;
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    .sn-body-inner {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 100%;
+      flex: 1 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
     .sn-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }
     .sn-field span {
       font-size: 11px; font-weight: 800; letter-spacing: 0.03em;
@@ -135,13 +163,13 @@
       bottom: 0;
       z-index: 30;
       background: rgba(15, 23, 42, 0.38);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: block;
       pointer-events: auto;
     }
     .sn-overlay[hidden] { display: none !important; }
     .sn-overlay-card {
+      position: sticky;
+      top: 32%;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -149,6 +177,8 @@
       padding: 22px 28px;
       min-width: 200px;
       max-width: 86%;
+      width: max-content;
+      margin: 0 auto;
       background: #fff;
       border: 1px solid #e2e8f0;
       border-radius: 14px;
@@ -173,6 +203,7 @@
       display: flex; flex-wrap: wrap; gap: 8px;
       padding: 0 14px 14px;
       min-width: 0;
+      flex-shrink: 0;
     }
     .sn-btn {
       border: 0; border-radius: 8px; padding: 8px 12px;
@@ -537,6 +568,7 @@
       overflow-x: auto;
       overflow-y: hidden;
       padding-bottom: 10px;
+      overflow-anchor: none;
     }
     .sn-kanban-board::-webkit-scrollbar {
       height: 8px;
@@ -615,12 +647,14 @@
       overflow-y: auto;
       min-height: 90px;
       flex: 1;
-      transition: background 0.15s;
+      transition: background 0.15s, padding-bottom 0.15s;
+      overflow-anchor: none;
     }
     .sn-kanban-cards.is-dragover {
       background: #f0f9ff;
       box-shadow: inset 0 0 0 2px #7dd3fc;
       border-radius: 6px;
+      padding-bottom: 28px;
     }
     .sn-kanban-placeholder {
       height: 4px;
@@ -629,6 +663,10 @@
       border-radius: 999px;
       pointer-events: none;
       flex-shrink: 0;
+    }
+    .sn-kanban-placeholder.is-append {
+      height: 8px;
+      margin-top: 6px;
     }
     .sn-kanban-cards:has(.sn-kanban-placeholder) .sn-kanban-empty {
       display: none;
@@ -964,6 +1002,7 @@
       gap: 8px;
       padding: 8px 10px;
       scrollbar-gutter: stable;
+      overflow-anchor: none;
     }
     .sn-root.is-panel .sn-body::-webkit-scrollbar { width: 10px; }
     .sn-root.is-panel .sn-body::-webkit-scrollbar-thumb {
@@ -971,10 +1010,13 @@
       border-radius: 6px;
     }
     .sn-root.is-panel .sn-body::-webkit-scrollbar-track { background: #e2e8f0; }
-    .sn-root.is-panel .sn-body > .sn-err,
-    .sn-root.is-panel .sn-body > .sn-lock,
-    .sn-root.is-panel .sn-body > .sn-mine,
-    .sn-root.is-panel .sn-body > .sn-msg {
+    .sn-root.is-panel .sn-body-inner {
+      gap: 8px;
+    }
+    .sn-root.is-panel .sn-body .sn-err,
+    .sn-root.is-panel .sn-body .sn-lock,
+    .sn-root.is-panel .sn-body .sn-mine,
+    .sn-root.is-panel .sn-body .sn-msg {
       flex-shrink: 0;
     }
     .sn-side {
@@ -1671,10 +1713,12 @@
   function mappingHas(mapping, key) {
     if (!mapping || !mapping[key]) return false;
     const Schema = globalThis.SeiNotionSchema;
+    if (Schema && Array.isArray(Schema.STANDARD_ROLES)) {
+      return Schema.STANDARD_ROLES.some((r) => r.key === key);
+    }
+    if (key === "status") return true;
     if (Schema && Schema.FIXED_ORDER_ROLES) {
-      if (key !== "status" && Schema.FIXED_ORDER_ROLES.indexOf(key) === -1) {
-        return false;
-      }
+      return Schema.FIXED_ORDER_ROLES.indexOf(key) !== -1;
     }
     return true;
   }
@@ -2132,21 +2176,23 @@
             <button type="button" class="sn-x" id="sn-close" aria-label="${closeLabel}">${pageMode ? "×" : panel ? (collapsed ? "▴" : "×") : "×"}</button>
           </div>
           <div class="sn-body">
-            ${ctx.error ? `<p class="sn-err">${esc(ctx.error)}</p>` : ""}
-            ${locked ? `<p class="sn-lock">${esc(ctx.lockName || "Outra pessoa")} está editando agora. Você pode ver os dados, mas não salvar até a pessoa sair da edição (ou o bloqueio expirar em ~1 minuto sem atividade).</p>` : ""}
-            ${ctx.lockMine && !locked ? `<p class="sn-mine">Você está editando. Enquanto estiver com o processo em edição, as outras pessoas não conseguem salvar.</p>` : ""}
-            ${!page && !ctx.error && !locked ? `<p class="sn-msg">Este processo ainda não está no Notion. Preencha as informações do Notion e crie o card.${docked ? "" : " Os próximos cliques abrem o mesmo card para editar."}</p>` : ""}
-            ${fieldsHtml}
+            <div class="sn-body-inner">
+              ${ctx.error ? `<p class="sn-err">${esc(ctx.error)}</p>` : ""}
+              ${locked ? `<p class="sn-lock">${esc(ctx.lockName || "Outra pessoa")} está editando agora. Você pode ver os dados, mas não salvar até a pessoa sair da edição (ou o bloqueio expirar em ~1 minuto sem atividade).</p>` : ""}
+              ${ctx.lockMine && !locked ? `<p class="sn-mine">Você está editando. Enquanto estiver com o processo em edição, as outras pessoas não conseguem salvar.</p>` : ""}
+              ${!page && !ctx.error && !locked ? `<p class="sn-msg">Este processo ainda não está no Notion. Preencha as informações do Notion e crie o card.${docked ? "" : " Os próximos cliques abrem o mesmo card para editar."}</p>` : ""}
+              ${fieldsHtml}
+              <div class="sn-overlay" id="sn-loading" ${busy ? "" : "hidden"}>
+                <div class="sn-overlay-card">
+                  <span class="sn-spinner" aria-hidden="true"></span>
+                  <span id="sn-loading-text">${esc(ctx.busyLabel || "Carregando dados do Notion…")}</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="sn-foot">
             ${action}
             <button type="button" class="sn-btn sn-btn-ghost" id="sn-cancel">${cancelLabel}</button>
-          </div>
-          <div class="sn-overlay" id="sn-loading" ${busy ? "" : "hidden"}>
-            <div class="sn-overlay-card">
-              <span class="sn-spinner" aria-hidden="true"></span>
-              <span id="sn-loading-text">${esc(ctx.busyLabel || "Carregando dados do Notion…")}</span>
-            </div>
           </div>
         </div>
       </div>`;
@@ -2954,6 +3000,89 @@
     });
   }
 
+  function kanbanScrollable(el) {
+    if (!el || el.nodeType !== 1) return { x: false, y: false };
+    const style = getComputedStyle(el);
+    const oy = style.overflowY;
+    const ox = style.overflowX;
+    return {
+      y: (oy === "auto" || oy === "scroll") && el.scrollHeight > el.clientHeight + 1,
+      x: (ox === "auto" || ox === "scroll") && el.scrollWidth > el.clientWidth + 1
+    };
+  }
+
+  function kanbanEdgeSpeed(distance, edge) {
+    const t = Math.min(1, Math.max(0, distance / edge));
+    return Math.ceil(6 + t * 18);
+  }
+
+  function stopKanbanDragScroll() {
+    if (dragScrollRaf) {
+      cancelAnimationFrame(dragScrollRaf);
+      dragScrollRaf = 0;
+    }
+    dragScrollShadow = null;
+  }
+
+  function applyKanbanDragScroll() {
+    const shadow = dragScrollShadow;
+    if (!draggingActivityId || !shadow) return;
+    const x = dragPointerX;
+    const y = dragPointerY;
+    const EDGE = 64;
+    const SLACK = 12;
+    const nodes = [];
+    shadow.querySelectorAll(".sn-kanban-cards").forEach((el) => nodes.push(el));
+    const board = shadow.querySelector(".sn-kanban-board");
+    if (board) nodes.push(board);
+    const body = shadow.querySelector(".sn-body");
+    if (body) nodes.push(body);
+    const modal = shadow.querySelector(".sn-modal");
+    if (modal) nodes.push(modal);
+
+    let scrolled = false;
+    for (let i = 0; i < nodes.length; i += 1) {
+      const el = nodes[i];
+      const can = kanbanScrollable(el);
+      if (!can.x && !can.y) continue;
+      const r = el.getBoundingClientRect();
+      if (x < r.left - SLACK || x > r.right + SLACK || y < r.top - SLACK || y > r.bottom + SLACK) {
+        continue;
+      }
+      let dx = 0;
+      let dy = 0;
+      if (can.y) {
+        if (y < r.top + EDGE) dy = -kanbanEdgeSpeed(r.top + EDGE - y, EDGE);
+        else if (y > r.bottom - EDGE) dy = kanbanEdgeSpeed(y - (r.bottom - EDGE), EDGE);
+      }
+      if (can.x) {
+        if (x < r.left + EDGE) dx = -kanbanEdgeSpeed(r.left + EDGE - x, EDGE);
+        else if (x > r.right - EDGE) dx = kanbanEdgeSpeed(x - (r.right - EDGE), EDGE);
+      }
+      if (dx || dy) {
+        if (dy) el.scrollTop += dy;
+        if (dx) el.scrollLeft += dx;
+        scrolled = true;
+        break;
+      }
+    }
+    if (scrolled && typeof kanbanDragFrameHook === "function") kanbanDragFrameHook();
+  }
+
+  function startKanbanDragScroll(shadow) {
+    stopKanbanDragScroll();
+    dragScrollShadow = shadow;
+    const tick = () => {
+      if (!draggingActivityId || !dragScrollShadow) {
+        dragScrollRaf = 0;
+        return;
+      }
+      applyKanbanDragScroll();
+      dragScrollRaf = requestAnimationFrame(tick);
+    };
+    dragScrollRaf = requestAnimationFrame(tick);
+  }
+
   function bind(shadow, ctx) {
     const $ = (id) => shadow.getElementById(id);
     const closeIt = () => {
@@ -3241,16 +3370,24 @@
       });
     }
 
+    function isCrossColumn(dropZone) {
+      const dest = dropZone ? dropZone.getAttribute("data-status-name") || "" : "";
+      return !!(draggingFromStatus && dest && dest !== draggingFromStatus);
+    }
+
     function placeKanbanPlaceholder(dropZone, clientY) {
+      const append = isCrossColumn(dropZone);
       const cards = [...dropZone.querySelectorAll(".sn-kanban-card")].filter(
         (c) => c.getAttribute("data-activity-id") !== draggingActivityId
       );
       let before = null;
-      for (let i = 0; i < cards.length; i += 1) {
-        const r = cards[i].getBoundingClientRect();
-        if (clientY < r.top + r.height / 2) {
-          before = cards[i];
-          break;
+      if (!append) {
+        for (let i = 0; i < cards.length; i += 1) {
+          const r = cards[i].getBoundingClientRect();
+          if (clientY < r.top + r.height / 2) {
+            before = cards[i];
+            break;
+          }
         }
       }
       let ph = dropZone.querySelector(".sn-kanban-placeholder");
@@ -3258,6 +3395,7 @@
         ph = document.createElement("div");
         ph.className = "sn-kanban-placeholder";
       }
+      ph.classList.toggle("is-append", append);
       if (before) {
         if (ph.nextSibling !== before) dropZone.insertBefore(ph, before);
       } else if (ph.parentNode !== dropZone || ph.nextSibling) {
@@ -3266,6 +3404,13 @@
     }
 
     function orderedIdsFromZone(dropZone, movedId) {
+      if (isCrossColumn(dropZone)) {
+        const ids = [...dropZone.querySelectorAll(".sn-kanban-card")]
+          .map((el) => el.getAttribute("data-activity-id"))
+          .filter((id) => id && id !== movedId);
+        if (movedId) ids.push(movedId);
+        return ids;
+      }
       const ids = [];
       let placed = false;
       [...dropZone.children].forEach((el) => {
@@ -3285,6 +3430,13 @@
       return ids;
     }
 
+    function finishKanbanDrag() {
+      stopKanbanDragScroll();
+      draggingActivityId = "";
+      draggingFromStatus = "";
+      clearKanbanPlaceholders();
+    }
+
     shadow.querySelectorAll(".sn-kanban-card:not(.is-editing)").forEach((card) => {
       card.addEventListener("dragstart", (ev) => {
         if (ctx.locked) {
@@ -3300,57 +3452,120 @@
           return;
         }
         draggingActivityId = card.getAttribute("data-activity-id") || "";
+        const zone = card.closest(".sn-kanban-cards");
+        draggingFromStatus = zone ? zone.getAttribute("data-status-name") || "" : "";
+        dragPointerX = ev.clientX;
+        dragPointerY = ev.clientY;
         ev.dataTransfer.setData("text/plain", draggingActivityId);
         ev.dataTransfer.effectAllowed = "move";
         card.classList.add("is-dragging");
+        startKanbanDragScroll(shadow);
       });
       card.addEventListener("dragend", () => {
         card.classList.remove("is-dragging");
-        draggingActivityId = "";
-        clearKanbanPlaceholders();
+        finishKanbanDrag();
       });
     });
 
-    shadow.querySelectorAll(".sn-kanban-cards").forEach((dropZone) => {
-      dropZone.addEventListener("dragover", (ev) => {
+    function setActiveDropZone(dropZone) {
+      dropZone.classList.add("is-dragover");
+      shadow.querySelectorAll(".sn-kanban-cards.is-dragover").forEach((el) => {
+        if (el !== dropZone) el.classList.remove("is-dragover");
+      });
+      shadow.querySelectorAll(".sn-kanban-placeholder").forEach((el) => {
+        if (el.parentNode !== dropZone) el.remove();
+      });
+    }
+
+    kanbanDragFrameHook = () => {
+      if (!draggingActivityId) return;
+      const hit = shadow.elementFromPoint(dragPointerX, dragPointerY);
+      if (!hit || !hit.closest) return;
+      const zone = hit.closest(".sn-kanban-cards") || (hit.closest(".sn-kanban-col") && hit.closest(".sn-kanban-col").querySelector(".sn-kanban-cards"));
+      if (!zone) return;
+      setActiveDropZone(zone);
+      placeKanbanPlaceholder(zone, dragPointerY);
+    };
+
+    shadow.querySelectorAll(".sn-kanban-col").forEach((col) => {
+      const dropZone = col.querySelector(".sn-kanban-cards");
+      if (!dropZone) return;
+
+      col.addEventListener("dragover", (ev) => {
+        if (!draggingActivityId) return;
         ev.preventDefault();
         ev.dataTransfer.dropEffect = "move";
-        dropZone.classList.add("is-dragover");
-        shadow.querySelectorAll(".sn-kanban-cards.is-dragover").forEach((el) => {
-          if (el !== dropZone) el.classList.remove("is-dragover");
-        });
-        shadow.querySelectorAll(".sn-kanban-placeholder").forEach((el) => {
-          if (el.parentNode !== dropZone) el.remove();
-        });
+        dragPointerX = ev.clientX;
+        dragPointerY = ev.clientY;
+        setActiveDropZone(dropZone);
         placeKanbanPlaceholder(dropZone, ev.clientY);
       });
-      dropZone.addEventListener("dragleave", (ev) => {
-        if (!dropZone.contains(ev.relatedTarget)) {
+      col.addEventListener("dragleave", (ev) => {
+        if (!col.contains(ev.relatedTarget)) {
           dropZone.classList.remove("is-dragover");
           const ph = dropZone.querySelector(".sn-kanban-placeholder");
           if (ph) ph.remove();
         }
       });
-      dropZone.addEventListener("drop", (ev) => {
+      col.addEventListener("drop", (ev) => {
         ev.preventDefault();
+        ev.stopPropagation();
         const actId =
           draggingActivityId || ev.dataTransfer.getData("text/plain") || "";
         const targetStatus = dropZone.getAttribute("data-status-name");
         const orderedIds = orderedIdsFromZone(dropZone, actId);
-        clearKanbanPlaceholders();
-        draggingActivityId = "";
+        const fromStatus = draggingFromStatus;
+        finishKanbanDrag();
         if (ctx.locked || !actId || !targetStatus) return;
         if (ctx.onReorderActivities) {
           ctx.onReorderActivities({
             activityId: actId,
             statusName: targetStatus,
-            orderedIds
+            orderedIds,
+            fromStatus
           });
         } else if (ctx.onMoveActivity) {
           ctx.onMoveActivity(actId, targetStatus);
         }
       });
     });
+
+    function trackKanbanDragPointer(ev) {
+      if (!draggingActivityId) return;
+      dragPointerX = ev.clientX;
+      dragPointerY = ev.clientY;
+    }
+
+    const boardEl = shadow.querySelector(".sn-kanban-board");
+    if (boardEl) boardEl.addEventListener("dragover", trackKanbanDragPointer);
+    const bodyEl = shadow.querySelector(".sn-body");
+    if (bodyEl) bodyEl.addEventListener("dragover", trackKanbanDragPointer);
+    const modalEl = shadow.querySelector(".sn-modal");
+    if (modalEl) {
+      modalEl.addEventListener("dragover", trackKanbanDragPointer);
+      modalEl.addEventListener(
+        "wheel",
+        (ev) => {
+          if (!draggingActivityId) return;
+          const path = typeof ev.composedPath === "function" ? ev.composedPath() : [];
+          for (let i = 0; i < path.length; i += 1) {
+            const node = path[i];
+            const can = kanbanScrollable(node);
+            if (can.y && ev.deltaY) {
+              node.scrollTop += ev.deltaY;
+              ev.preventDefault();
+              break;
+            }
+            if (can.x && ev.deltaX) {
+              node.scrollLeft += ev.deltaX;
+              ev.preventDefault();
+              break;
+            }
+          }
+        },
+        { passive: false, capture: true }
+      );
+    }
 
     // Activity Delete
     shadow.querySelectorAll(".sn-kanban-card-del").forEach((btn) => {

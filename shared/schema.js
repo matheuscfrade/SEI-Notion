@@ -4,11 +4,37 @@
  */
 (function (root) {
 
-  const ROLE_KEYS = [
-    "processNumber",
-    "processType",
-    "status"
+  const STANDARD_ROLES = [
+    {
+      key: "processNumber",
+      label: "Número SEI",
+      required: true,
+      prepareName: "Número SEI",
+      purpose: "Liga o processo do SEI à página no Notion. Sem esta coluna a extensão não encontra o card.",
+      hints: ["numero sei", "nup", "numero do processo"]
+    },
+    {
+      key: "processType",
+      label: "Tipo de processo",
+      required: false,
+      recommended: true,
+      prepareName: "Tipo de processo",
+      purpose: "Tipo cadastrado no SEI (ex.: Contrato). A extensão preenche sozinha; não é editável no popup.",
+      hints: ["tipo de processo", "tipo processo"]
+    },
+    {
+      key: "status",
+      label: "Status",
+      required: false,
+      recommended: true,
+      prepareName: "Status",
+      purpose: "Situação do processo (A fazer, Em andamento…). Também define a cor do botão N no SEI.",
+      hints: ["status", "situacao", "fase"]
+    }
   ];
+
+  const LEGACY_ROLE_KEYS = ["title", "labels", "assignee", "due", "seiUrl", "notes"];
+  const ROLE_KEYS = STANDARD_ROLES.map((r) => r.key).concat(LEGACY_ROLE_KEYS);
 
   const SEI_READONLY_ROLES = [
     "processNumber",
@@ -60,11 +86,6 @@
         ]
       }
     },
-    Marcadores: { multi_select: {} },
-    Prazo: { date: {} },
-    "URL SEI": { rich_text: {} },
-    Observações: { rich_text: {} },
-    Responsável: { rich_text: {} },
     "SEI lock": { rich_text: {} }
   };
 
@@ -206,14 +227,16 @@
       byName[p.name] = p;
     });
     const merged = emptyMapping();
-    const first = firstColumnName(schema);
-    merged.processNumber = first || "";
+    const guessed = autoMap(schema);
     ROLE_KEYS.forEach((key) => {
-      const prev = saved && saved[key];
-      if (!prev) return;
       const allowed = COMPAT[key] || [];
-      if (byName[prev] && allowed.includes(byName[prev].type)) {
+      const prev = saved && saved[key];
+      if (prev && byName[prev] && allowed.includes(byName[prev].type)) {
         merged[key] = prev;
+        return;
+      }
+      if (guessed[key] && byName[guessed[key]] && allowed.includes(byName[guessed[key]].type)) {
+        merged[key] = guessed[key];
       }
     });
     const extraOk = extraCandidates(schema, merged).map((p) => p.name);
@@ -352,13 +375,68 @@
     return listed.length ? listed[0].name : "";
   }
 
+  function nameMatchesRole(name, role) {
+    if (!role) return false;
+    const n = norm(name);
+    if (!n) return false;
+    if (role.prepareName && n === norm(role.prepareName)) return true;
+    const hints = Array.isArray(role.hints) ? role.hints : [];
+    for (let i = 0; i < hints.length; i += 1) {
+      const h = norm(hints[i]);
+      if (!h) continue;
+      if (n === h || n.indexOf(h) !== -1) return true;
+    }
+    return false;
+  }
+
+  function roleByKey(key) {
+    return STANDARD_ROLES.find((r) => r.key === key) || null;
+  }
+
+  function hasLockProperty(schema) {
+    return listProperties(schema).some((p) => isLockProperty(p.name));
+  }
+
   function autoMap(schema) {
     const mapping = emptyMapping();
-    const first = firstColumnName(schema);
-    if (first) mapping.processNumber = first;
+    const listed = listProperties(schema).filter((p) => !isLockProperty(p.name));
+    const used = new Set();
+
+    const titleName = findTitleName(schema);
+    if (titleName) {
+      mapping.title = titleName;
+      used.add(titleName);
+    }
+
+    STANDARD_ROLES.forEach((role) => {
+      if (mapping[role.key]) return;
+      const allowed = COMPAT[role.key] || [];
+      const found = listed.find((p) => {
+        if (used.has(p.name)) return false;
+        if (allowed.length && p.type && !allowed.includes(p.type)) return false;
+        return nameMatchesRole(p.name, role);
+      });
+      if (found) {
+        mapping[role.key] = found.name;
+        used.add(found.name);
+      }
+    });
+
+    if (!mapping.processNumber) {
+      const allowed = COMPAT.processNumber || [];
+      const fallback = listed.find(
+        (p) => !used.has(p.name) && allowed.includes(p.type) && p.type !== "title"
+      );
+      if (fallback) {
+        mapping.processNumber = fallback.name;
+      } else if (titleName) {
+        mapping.processNumber = titleName;
+      }
+    }
+
     mapping.order = resolveOrder(
       mapping,
-      listProperties(schema).map((p) => p.name)
+      listed.map((p) => p.name)
     );
     return mapping;
   }
@@ -896,7 +974,7 @@
   const ACTIVITIES_ROLES = [
     { key: "title", label: "Título da Atividade", required: true, types: ["title"] },
     { key: "status", label: "Status (Colunas Kanban)", required: true, types: ["status", "select"] },
-    { key: "processRelation", label: "Relação com Processo SEI", required: true, types: ["relation"] },
+    { key: "processRelation", label: "Número SEI", required: true, types: ["relation"] },
     { key: "assignee", label: "Atribuição", required: false, types: ["people", "rich_text"] },
     { key: "due", label: "Prazo", required: false, types: ["date"] }
   ];
@@ -906,18 +984,20 @@
     const normTarget = targetDatabaseId
       ? String(targetDatabaseId).replace(/-/g, "").toLowerCase()
       : "";
+    const matches = [];
     for (const p of props) {
-      if (p.type === "relation") {
-        const relDb =
-          p.relation && p.relation.database_id
-            ? String(p.relation.database_id).replace(/-/g, "").toLowerCase()
-            : "";
-        if (!normTarget || relDb === normTarget) {
-          return p.name;
-        }
+      if (p.type !== "relation") continue;
+      const relDb =
+        p.relation && p.relation.database_id
+          ? String(p.relation.database_id).replace(/-/g, "").toLowerCase()
+          : "";
+      if (!normTarget || relDb === normTarget) {
+        matches.push(p);
       }
     }
-    return "";
+    const preferred = matches.find((p) => norm(p.name) === "numero sei");
+    if (preferred) return preferred.name;
+    return matches.length ? matches[0].name : "";
   }
 
   function autoMapActivities(schema, processDatabaseId) {
@@ -937,8 +1017,9 @@
           statusProp = p.name;
         }
       }
-      if (!relProp && p.type === "relation") {
-        relProp = p.name;
+      if (p.type === "relation") {
+        if (n === "numero sei") relProp = p.name;
+        else if (!relProp) relProp = p.name;
       }
       if (!assigneeProp && (p.type === "people" || p.type === "rich_text") && /atrib|resp|pessoa|user|membro/i.test(n)) {
         assigneeProp = p.name;
@@ -1110,6 +1191,7 @@
 
   root.SeiNotionSchema = {
     COMPAT,
+    STANDARD_ROLES,
     FIXED_ORDER_ROLES,
     PREPARE_PROPERTIES,
     ACTIVITIES_ROLES,
@@ -1150,6 +1232,9 @@
     LOCK_TTL_MS,
     SEI_URL_LINK_TEXT,
     isLockProperty,
+    hasLockProperty,
+    nameMatchesRole,
+    roleByKey,
     parseLock,
     encodeLock,
     lockIsActive,

@@ -52,7 +52,8 @@
     stActDs: $("#stActDs"),
     stActReady: $("#stActReady"),
     fldProcessDisplay: $("#fldProcessDisplay"),
-    btnSaveDisplay: $("#btnSaveDisplay")
+    btnSaveDisplay: $("#btnSaveDisplay"),
+    lockStatusHint: $("#lockStatusHint")
   };
 
   const SEI_ROLES = [
@@ -174,6 +175,7 @@
       els.stSeiActive.textContent = "inativa";
       els.stSeiActive.className = "warn";
     }
+    updateFoldSummaries();
   }
 
   async function reconcileHostPermissions(newPatterns) {
@@ -313,6 +315,7 @@
     els.stActReady.className = actReady ? "ok" : "warn";
 
     syncProcessDisplayUi(settings.processDisplay);
+    updateFoldSummaries();
   }
 
   function syncProcessDisplayUi(value) {
@@ -535,7 +538,7 @@
       return;
     }
     if (!mapping.processRelation) {
-      toast("Mapeie a coluna de Relação com o Processo SEI.", "err");
+      toast("Mapeie a coluna Número SEI (relação com o banco de processos).", "err");
       return;
     }
     const opt = els.selActDataSource.selectedOptions[0];
@@ -639,6 +642,37 @@
       .join("");
   }
 
+  function updateKitStatus(schema, mapping) {
+    const list = document.getElementById("processKitList");
+    const roles = Schema.STANDARD_ROLES || [];
+    if (list) {
+      roles.forEach((role) => {
+        const li = list.querySelector('[data-kit="' + role.key + '"]');
+        if (!li) return;
+        const ok = !!(mapping && mapping[role.key]);
+        li.classList.toggle("is-ok", ok);
+        li.classList.toggle("is-missing", !ok);
+      });
+      const lockLi = list.querySelector('[data-kit="lock"]');
+      const hasLock = Schema.hasLockProperty && Schema.hasLockProperty(schema);
+      if (lockLi) {
+        lockLi.classList.toggle("is-ok", !!hasLock);
+        lockLi.classList.toggle("is-missing", !hasLock);
+      }
+    }
+    if (els.lockStatusHint) {
+      const hasLock = schema && Schema.hasLockProperty && Schema.hasLockProperty(schema);
+      if (!schema) {
+        els.lockStatusHint.textContent = "";
+        return;
+      }
+      els.lockStatusHint.textContent = hasLock
+        ? "Coluna SEI lock encontrada. O bloqueio de edição está ativo."
+        : "Coluna SEI lock ausente. Clique em Preparar este banco para criá-la (e as outras do kit). Sem ela, duas pessoas podem salvar o mesmo processo ao mesmo tempo.";
+      els.lockStatusHint.style.color = hasLock ? "#047857" : "#9a3412";
+    }
+  }
+
   function applyInspected(ds, preferredMapping) {
     currentSchema = ds.schema;
     const mapping = preferredMapping || ds.mapping;
@@ -668,53 +702,47 @@
     if (!fixedRolesBox || !extraColumnsBox) {
       els.columnsBox.innerHTML = `
         <div class="mapping-section">
-          <h4 style="margin-top: 0; margin-bottom: 12px; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; font-size: 15px;">Mapeamento de Papéis (Obrigatórios)</h4>
-          <div class="roles-head" style="display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 12px; font-weight: 700; font-size: 13px; color: #475569; margin-bottom: 8px;">
-            <span>Papel no SEI</span>
-            <span>Coluna correspondente no Notion</span>
-            <span style="text-align: center;">Mostrar no popup</span>
+          <h4 class="map-h">Campos padrão</h4>
+          <div class="roles-head">
+            <span>Campo</span>
+            <span>Coluna no Notion</span>
+            <span>Mostrar no popup</span>
           </div>
-          <div id="fixedRolesBox" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px;"></div>
+          <div id="fixedRolesBox"></div>
+          <div id="lockRowBox"></div>
         </div>
         <div class="mapping-section">
-          <h4 style="margin-top: 16px; margin-bottom: 12px; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; font-size: 15px;">Colunas Adicionais no Popup (Opcionais)</h4>
+          <h4 class="map-h">Outras colunas do seu banco (opcional)</h4>
           <p class="hint" style="margin-bottom: 12px; font-size: 12px;">
-            As demais colunas do seu banco Notion que não possuem um papel no SEI podem ser exibidas no popup da extensão. Marque "Mostrar" e ordene-as com ↑↓.
+            Colunas que não são dos campos padrão podem aparecer no popup. Marque “Mostrar” e ordene com ↑↓.
           </p>
           <div class="col-head" aria-hidden="true" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; font-weight: 700; font-size: 13px; color: #475569; margin-bottom: 8px;">
             <span>Coluna no Notion</span>
             <span>Mostrar no popup</span>
             <span>Ordem</span>
           </div>
-          <div id="extraColumnsBox" style="display: flex; flex-direction: column; gap: 10px;"></div>
+          <div id="extraColumnsBox"></div>
         </div>
       `;
       fixedRolesBox = document.getElementById("fixedRolesBox");
       extraColumnsBox = document.getElementById("extraColumnsBox");
     }
 
-    const roleLabels = {
-      processNumber: "Número SEI",
-      processType: "Tipo de processo",
-      title: "Especificação",
-      labels: "Marcadores",
-      due: "Prazo",
-      assignee: "Atribuição",
-      notes: "Observações",
-      seiUrl: "URL SEI"
-    };
-
-    // 1. Render Section 1: Fixed roles dropdowns
     const hiddenSet = new Set(Array.isArray(mapping.hiddenRoles) ? mapping.hiddenRoles : []);
+    const standardRoles = Schema.STANDARD_ROLES || [];
 
-    fixedRolesBox.innerHTML = Schema.FIXED_ORDER_ROLES.map((role) => {
-      const label = roleLabels[role];
+    fixedRolesBox.innerHTML = standardRoles.map((roleDef) => {
+      const role = roleDef.key;
+      const label = roleDef.label;
       const compatTypes = Schema.COMPAT[role] || [];
       const compatCols = listed.filter((c) => compatTypes.includes(c.type));
       const currentSelectedValue = mapping[role] || "";
-      
+      const pill = roleDef.required
+        ? '<span class="pill pill-req">obrigatório</span>'
+        : '<span class="pill pill-rec">recomendado</span>';
+
       const optionsHtml = [
-        `<option value="">— selecione a coluna —</option>`
+        `<option value="">— não usar —</option>`
       ].concat(
         compatCols.map((c) => {
           const sel = c.name === currentSelectedValue ? " selected" : "";
@@ -726,16 +754,32 @@
       const isNup = role === "processNumber";
       const checkboxDisabled = isNup ? " disabled" : "";
 
-      return `<div class="role-map-row" style="display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 12px; align-items: center; padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; margin-bottom: 6px;">
-        <span style="font-weight: 600; font-size: 13px; color: #1e293b;">${escapeHtml(label)} *</span>
-        <select class="role-select" data-role="${escapeAttr(role)}" aria-label="${escapeAttr(label)}" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; font-size: 13px; width: 100%;">
+      return `<div class="role-map-row">
+        <div class="role-meta">
+          <strong>${pill} ${escapeHtml(label)}</strong>
+          <em>${escapeHtml(roleDef.purpose || "")}</em>
+        </div>
+        <select class="role-select" data-role="${escapeAttr(role)}" aria-label="${escapeAttr(label)}">
           ${optionsHtml}
         </select>
         <label class="col-show" style="display: flex; justify-content: center; align-items: center; margin: 0;" title="${isNup ? "Número SEI é obrigatório no popup" : "Mostrar no popup"}">
-          <input type="checkbox" class="role-popup" data-role="${escapeAttr(role)}"${showInPopupChecked}${checkboxDisabled} style="cursor: pointer; width: 16px; height: 16px; margin: 0;" />
+          <input type="checkbox" class="role-popup" data-role="${escapeAttr(role)}"${showInPopupChecked}${checkboxDisabled} />
         </label>
       </div>`;
     }).join("");
+
+    const lockBox = document.getElementById("lockRowBox");
+    if (lockBox) {
+      const hasLock = Schema.hasLockProperty && Schema.hasLockProperty(schema);
+      lockBox.innerHTML = `<div class="lock-row ${hasLock ? "is-ok" : "is-missing"}">
+        <span class="pill pill-sys">sistema</span>
+        <strong>SEI lock</strong> —
+        ${hasLock
+          ? "coluna encontrada. O bloqueio de edição está ativo e não aparece no popup."
+          : "coluna ausente. Clique em <em>Preparar este banco</em> para criá-la. Sem ela, duas pessoas podem salvar o mesmo processo ao mesmo tempo."}
+      </div>`;
+    }
+    updateKitStatus(schema, mapping);
 
     // 2. Render Section 2: Extra columns helper
     const updateExtras = () => {
@@ -799,9 +843,16 @@
 
     updateExtras();
 
-    // Attach listeners to update extras when dropdown selection changes
     [...fixedRolesBox.querySelectorAll(".role-select")].forEach((select) => {
       select.addEventListener("change", () => {
+        if (select.getAttribute("data-role") === "status" && els.selStatusCol) {
+          els.selStatusCol.value = select.value;
+          renderStatusColorsList(
+            currentSchema,
+            select.value,
+            currentMapping ? currentMapping.badgeColorMap : null
+          );
+        }
         updateExtras();
       });
     });
@@ -840,13 +891,23 @@
     const extra = [];
     const order = [];
     
-    // First, standard roles are always in FIXED_ORDER_ROLES order in mapping.order
-    Schema.FIXED_ORDER_ROLES.forEach((role) => {
+    const fixedRoles = Schema.FIXED_ORDER_ROLES || [];
+    fixedRoles.forEach((role) => {
       order.push("role:" + role);
     });
+    const standardKeys = (Schema.STANDARD_ROLES || []).map((r) => r.key);
+    standardKeys.forEach((role) => {
+      if (fixedRoles.indexOf(role) !== -1) return;
+      if (mapping[role]) order.push("role:" + role);
+    });
 
-    const statusCol = els.selStatusCol ? els.selStatusCol.value : "";
-    mapping.status = statusCol;
+    if (!mapping.status && els.selStatusCol) {
+      mapping.status = els.selStatusCol.value;
+    }
+    const statusCol = mapping.status || "";
+    if (els.selStatusCol && statusCol && els.selStatusCol.value !== statusCol) {
+      els.selStatusCol.value = statusCol;
+    }
 
     // Read the extra columns rows
     let statusInRows = false;
@@ -1016,8 +1077,8 @@
       const miss = res.dataSource.missing || [];
       toast(
         miss.length
-          ? "Ainda faltam colunas: " + miss.join(", ")
-          : "Colunas padrão prontas. Confira o mapeamento e salve."
+          ? "Ainda faltam colunas do kit: " + miss.join(", ") + ". Confira as permissões da integração."
+          : "Kit aplicado: colunas criadas e mapeamento sugerido. Confira e clique em Salvar banco."
       );
     } catch (err) {
       toast(err.message || String(err), "err");
@@ -1033,17 +1094,14 @@
       return;
     }
     const mapping = readMappingFromUi();
-    const roleLabels = {
-      processNumber: "Número SEI",
-      processType: "Tipo de processo"
-    };
-    const requiredRoles = ["processNumber", "processType"];
-    for (const role of requiredRoles) {
-      if (!mapping[role]) {
-        toast(`Mapeie o papel obrigatório "${roleLabels[role]}" (ou prepare o banco).`, "err");
-        return;
-      }
+    if (!mapping.processNumber) {
+      toast(
+        "Associe o campo obrigatório Número SEI a uma coluna (ou clique em Preparar este banco).",
+        "err"
+      );
+      return;
     }
+    const hasLock = currentSchema && Schema.hasLockProperty && Schema.hasLockProperty(currentSchema);
     const opt = els.selDataSource.selectedOptions[0];
     await SeiNotionStorage.saveSettings({
       dataSourceId: id,
@@ -1052,7 +1110,117 @@
       mapping
     });
     await refreshNotionStatus();
-    toast("Banco salvo. Recarregue o SEI para ver os cartões.");
+    toast(
+      hasLock
+        ? "Banco salvo. Recarregue o SEI para ver os botões N."
+        : "Banco salvo, mas sem a coluna SEI lock. Prepare o banco para ativar o bloqueio de edição. Recarregue o SEI."
+    );
+  }
+
+  const FOLD_KEY = "seiNotion_optionsFolds";
+
+  function setFoldSummary(id, text, cls) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "fold-summary" + (cls ? " " + cls : "");
+  }
+
+  function foldClassFromStatus(el) {
+    if (!el) return "";
+    if (el.classList.contains("ok")) return "is-ok";
+    if (el.classList.contains("bad")) return "is-bad";
+    if (el.classList.contains("warn")) return "is-warn";
+    return "";
+  }
+
+  function updateFoldSummaries() {
+    if (!els.stSeiActive) return;
+    setFoldSummary(
+      "foldSumSei",
+      els.stSeiActive.textContent,
+      foldClassFromStatus(els.stSeiActive)
+    );
+    setFoldSummary(
+      "foldSumNotion",
+      els.stNotion.textContent,
+      foldClassFromStatus(els.stNotion)
+    );
+    const dsOk = els.stReady && els.stReady.classList.contains("ok");
+    setFoldSummary(
+      "foldSumDs",
+      dsOk ? els.stReady.textContent : els.stDs.textContent,
+      foldClassFromStatus(dsOk ? els.stReady : els.stDs)
+    );
+    const actOk = els.stActReady && els.stActReady.classList.contains("ok");
+    setFoldSummary(
+      "foldSumAct",
+      actOk ? els.stActReady.textContent : els.stActDs.textContent,
+      foldClassFromStatus(actOk ? els.stActReady : els.stActDs)
+    );
+  }
+
+  function setFoldOpen(card, open) {
+    if (!card) return;
+    card.classList.toggle("is-open", !!open);
+    const head = card.querySelector(".fold-head");
+    if (head) head.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function persistFolds() {
+    const state = {};
+    document.querySelectorAll(".card-fold[data-fold]").forEach((card) => {
+      state[card.getAttribute("data-fold")] = card.classList.contains("is-open");
+    });
+    try {
+      localStorage.setItem(FOLD_KEY, JSON.stringify(state));
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function applyDefaultFolds() {
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(FOLD_KEY) || "null");
+    } catch (_) {
+      saved = null;
+    }
+    const cards = [...document.querySelectorAll(".card-fold[data-fold]")];
+    if (saved && typeof saved === "object") {
+      cards.forEach((card) => {
+        const id = card.getAttribute("data-fold");
+        if (typeof saved[id] === "boolean") setFoldOpen(card, saved[id]);
+      });
+      return;
+    }
+    const seiOk = els.stSeiActive && els.stSeiActive.classList.contains("ok");
+    const notionOk = els.stNotion && els.stNotion.classList.contains("ok");
+    const dsOk = els.stReady && els.stReady.classList.contains("ok");
+    const actOk = els.stActReady && els.stActReady.classList.contains("ok");
+    const first = !seiOk
+      ? "sei"
+      : !notionOk
+        ? "notion"
+        : !dsOk
+          ? "processos"
+          : "atividades";
+    cards.forEach((card) => {
+      setFoldOpen(card, card.getAttribute("data-fold") === first);
+    });
+  }
+
+  function setupFolds() {
+    document.querySelectorAll(".card-fold .fold-head").forEach((head) => {
+      head.addEventListener("click", () => {
+        const card = head.closest(".card-fold");
+        if (!card) return;
+        setFoldOpen(card, !card.classList.contains("is-open"));
+        persistFolds();
+      });
+    });
+    applyDefaultFolds();
+    updateFoldSummaries();
   }
 
   async function init() {
@@ -1064,6 +1232,7 @@
     await SeiNotionStorage.ensureSeeded();
     await refreshSeiSitesStatus();
     await refreshNotionStatus();
+    setupFolds();
 
     const settings = await SeiNotionStorage.getSettings();
     if (settings.dataSourceId) {
