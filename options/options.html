@@ -6,15 +6,122 @@
   <title>SEI Notion</title>
   <link rel="stylesheet" href="options.css" />
 </head>
-<body>
+<body class="is-home">
+  <div id="home" class="home">
+    <div class="home-card">
+      <div class="home-brand">
+        <div class="logo">SN</div>
+        <div>
+          <h1>SEI Notion</h1>
+          <p>Liga os processos do SEI às páginas do seu Notion. Configure em poucos passos — não precisa ser especialista.</p>
+        </div>
+      </div>
+      <div class="home-choices">
+        <button type="button" id="btnHomeOptions" class="home-choice">
+          <strong>Opções</strong>
+          <span>Abrir todos os ajustes de uma vez.</span>
+        </button>
+        <button type="button" id="btnHomeGuide" class="home-choice">
+          <strong>Guia passo a passo</strong>
+          <span>Configure uma etapa de cada vez.</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="onboard" class="onboard hidden" hidden role="dialog" aria-modal="true" aria-label="Configuração inicial do SEI Notion">
+    <aside class="onboard-rail" aria-label="Etapas da configuração">
+      <div class="onboard-brand">
+        <div class="logo">SN</div>
+        <div>
+          <strong>SEI Notion</strong>
+          <span>Configuração inicial</span>
+        </div>
+      </div>
+      <ol class="onboard-steps" id="onboardSteps"></ol>
+      <button type="button" id="btnSkipOnboard" class="onboard-escape">
+        Ir para as opções
+      </button>
+    </aside>
+
+    <div class="onboard-main">
+      <div class="onboard-scroll" id="onboardScroll">
+        <section class="onboard-panel" data-onboard="sei">
+          <p class="onboard-kicker">Etapa 1 de 4</p>
+          <h2>Onde fica o seu SEI?</h2>
+          <p class="onboard-lead">
+            Informe a URL raiz da instituição. A extensão só atua nesses sites —
+            o Chrome pede permissão apenas para eles.
+          </p>
+          <div class="onboard-slot" data-slot="sei"></div>
+        </section>
+
+        <section class="onboard-panel" data-onboard="notion">
+          <p class="onboard-kicker">Etapa 2 de 4</p>
+          <h2>Conecte o seu Notion</h2>
+          <p class="onboard-lead">
+            O token fica neste navegador e não passa por nenhum servidor nosso.
+            Ele é a chave para gravar processos na sua conta.
+          </p>
+          <div class="onboard-slot" data-slot="notion"></div>
+        </section>
+
+        <section class="onboard-panel" data-onboard="processos">
+          <p class="onboard-kicker">Etapa 3 de 4</p>
+          <h2>Banco de processos</h2>
+          <p class="onboard-lead">
+            Um banco no Notion é uma tabela. Cada linha será um processo do SEI.
+            Escolha o banco, prepare as colunas e salve o mapeamento.
+          </p>
+          <div class="onboard-slot" data-slot="processos"></div>
+        </section>
+
+        <section class="onboard-panel" data-onboard="atividades">
+          <p class="onboard-kicker">Etapa 4 de 4 · opcional</p>
+          <h2>Quadro Kanban de atividades</h2>
+          <p class="onboard-lead">
+            Se quiser tarefas dentro de cada processo, conecte um segundo banco.
+            Sem este passo o botão <strong>N</strong> continua funcionando — só não mostra o quadro.
+          </p>
+          <div class="onboard-slot" data-slot="atividades"></div>
+        </section>
+
+        <section class="onboard-panel" data-onboard="done">
+          <div class="onboard-hero">
+            <div class="onboard-done-mark" aria-hidden="true">✓</div>
+            <p class="onboard-kicker">Tudo certo</p>
+            <h2>Pronto para usar no SEI</h2>
+            <p class="onboard-lead" id="onboardDoneLead">
+              Recarregue a aba do SEI. Ao lado do número do processo aparece o botão
+              <strong>N</strong> — azul se já existe página no Notion.
+            </p>
+            <ul class="onboard-done-list" id="onboardDoneList"></ul>
+          </div>
+        </section>
+      </div>
+
+      <div class="onboard-bar">
+        <button type="button" id="btnOnboardBack" class="btn btn-ghost-dark">Voltar</button>
+        <div class="onboard-bar-right">
+          <button type="button" id="btnOnboardSkip" class="btn btn-ghost-dark hidden">Pular por agora</button>
+          <button type="button" id="btnOnboardNext" class="btn btn-primary">Continuar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="app">
     <header class="topbar">
       <div class="brand">
         <div class="logo">SN</div>
         <div>
           <h1>SEI Notion</h1>
-          <p>Liga os processos do SEI às páginas do seu Notion. Configure em três passos — não precisa ser especialista.</p>
+          <p>Liga os processos do SEI às páginas do seu Notion. Configure em poucos passos — não precisa ser especialista.</p>
         </div>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" id="btnOpenHome" class="btn-guia">Início</button>
+        <button type="button" id="btnOpenOnboard" class="btn-guia">Guia passo a passo</button>
       </div>
     </header>
 
@@ -443,7 +550,7 @@
       <div class="credits">
         Desenvolvido por <strong>Matheus Costa Frade</strong>
       </div>
-      <div>SEI Notion v<span id="version">0.2.0</span></div>
+      <div>SEI Notion v<span id="version">0.3.0</span></div>
     </footer>
   </div>
 

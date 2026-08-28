@@ -49,13 +49,13 @@
 
     if (!sites.length) {
       lead.textContent =
-        "Obrigatório: abra as opções e informe a URL raiz do SEI.";
+        "Abra as opções: o guia passo a passo pede a URL raiz do SEI.";
     } else if (!token) {
       lead.textContent =
-        "Crie uma integração no seu Notion, cole o token nas opções e compartilhe o banco.";
+        "Continue o guia nas opções: crie a integração no Notion e cole o token.";
     } else if (!settings.dataSourceId) {
       lead.textContent =
-        "Token ok. Escolha o database nas opções e salve o mapeamento.";
+        "Token ok. No guia, escolha o banco de processos e salve o mapeamento.";
     } else if (!SeiNotionStorage.isReady(settings, token)) {
       lead.textContent =
         "Falta mapear as colunas obrigatórias do SEI nas opções.";
@@ -89,7 +89,11 @@
   }
 
   document.getElementById("btnOptions").addEventListener("click", () => {
-    chrome.runtime.openOptionsPage();
+    chrome.runtime.sendMessage({ type: "SEI_NOTION_OPEN_OPTIONS_HOME" }, () => {
+      if (chrome.runtime.lastError) {
+        chrome.runtime.openOptionsPage();
+      }
+    });
   });
 
   document.getElementById("btnRefresh").addEventListener("click", async () => {

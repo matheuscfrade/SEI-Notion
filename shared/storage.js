@@ -44,7 +44,9 @@
     },
     activitiesColumnOrder: [],
     processDisplay: "popup",
-    processPanelHeight: 0
+    processPanelHeight: 0,
+    onboardingComplete: false,
+    onboardingStep: ""
   };
 
   function clampPanelHeight(value) {
@@ -80,7 +82,9 @@
       activitiesMapping,
       activitiesColumnOrder: Array.isArray(prev.activitiesColumnOrder) ? prev.activitiesColumnOrder.filter(Boolean) : [],
       processDisplay: "popup",
-      processPanelHeight: clampPanelHeight(prev.processPanelHeight)
+      processPanelHeight: clampPanelHeight(prev.processPanelHeight),
+      onboardingComplete: !!prev.onboardingComplete,
+      onboardingStep: String(prev.onboardingStep || "")
     };
   }
 

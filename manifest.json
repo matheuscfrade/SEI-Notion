@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SEI Notion",
   "short_name": "SEI Notion",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Integra o SEI ao Notion: cada pessoa conecta o próprio workspace e vê as páginas junto dos processos.",
   "author": "Matheus Costa Frade",
   "homepage_url": "https://github.com/matheuscfrade/SEI-Notion",

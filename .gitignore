@@ -7,3 +7,7 @@ node_modules/
 dist-zip/
 *.crx
 *.pem
+store/
+scripts/pack-store.py
+scripts/capture-store-shots.py
+scripts/make-pitch-pdf.py

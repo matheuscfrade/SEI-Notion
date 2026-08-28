@@ -213,7 +213,7 @@
         injectOpenTabs: false
       });
       await refreshSeiSitesStatus();
-      return;
+      return false;
     }
 
     const baseUrls = sites.map((s) => s.baseUrl);
@@ -228,7 +228,7 @@
       toast("Falha ao solicitar permissão: " + (err.message || err), "err");
       setBusy(els.btnSaveSeiSites, false);
       await refreshSeiSitesStatus();
-      return;
+      return false;
     }
 
     try {
@@ -242,7 +242,7 @@
           injectOpenTabs: false
         });
         await refreshSeiSitesStatus();
-        return;
+        return false;
       }
 
       const res = await chrome.runtime.sendMessage({
@@ -257,7 +257,7 @@
             ? ` Abas SEI abertas atualizadas (${res.injected}).`
             : " Recarregue a aba do SEI (F5) se os cartões não aparecerem.";
         toast(`${sites.length} site(s) ativo(s).${inj}`);
-        return;
+        return true;
       }
 
       toast(
@@ -265,8 +265,10 @@
           (res?.error || res?.status?.lastError || "script não registrado"),
         "err"
       );
+      return false;
     } catch (err) {
       toast("Erro ao salvar: " + (err.message || err), "err");
+      return false;
     } finally {
       setBusy(els.btnSaveSeiSites, false);
     }
@@ -526,20 +528,20 @@
     const id = els.selActDataSource.value;
     if (!id) {
       toast("Escolha um banco de atividades.", "err");
-      return;
+      return false;
     }
     const mapping = readActMappingFromUi();
     if (!mapping.title) {
       toast("Mapeie a coluna de Título da Atividade.", "err");
-      return;
+      return false;
     }
     if (!mapping.status) {
       toast("Mapeie a coluna de Status/Kanban da Atividade.", "err");
-      return;
+      return false;
     }
     if (!mapping.processRelation) {
       toast("Mapeie a coluna Número SEI (relação com o banco de processos).", "err");
-      return;
+      return false;
     }
     const opt = els.selActDataSource.selectedOptions[0];
     await SeiNotionStorage.saveSettings({
@@ -550,6 +552,7 @@
     });
     await refreshNotionStatus();
     toast("Banco de atividades salvo com sucesso!");
+    return true;
   }
 
   function escapeHtml(s) {
@@ -954,7 +957,7 @@
     const token = els.fldToken.value.trim();
     if (!token) {
       toast("Cole o token do Notion.", "err");
-      return;
+      return false;
     }
     setBusy(els.btnConnectNotion, true);
     try {
@@ -971,8 +974,10 @@
       } catch (_) {
         /* ignore */
       }
+      return true;
     } catch (err) {
       toast(err.message || String(err), "err");
+      return false;
     } finally {
       setBusy(els.btnConnectNotion, false);
     }
@@ -1091,7 +1096,7 @@
     const id = els.selDataSource.value;
     if (!id) {
       toast("Escolha um banco.", "err");
-      return;
+      return false;
     }
     const mapping = readMappingFromUi();
     if (!mapping.processNumber) {
@@ -1099,7 +1104,7 @@
         "Associe o campo obrigatório Número SEI a uma coluna (ou clique em Preparar este banco).",
         "err"
       );
-      return;
+      return false;
     }
     const hasLock = currentSchema && Schema.hasLockProperty && Schema.hasLockProperty(currentSchema);
     const opt = els.selDataSource.selectedOptions[0];
@@ -1115,6 +1120,7 @@
         ? "Banco salvo. Recarregue o SEI para ver os botões N."
         : "Banco salvo, mas sem a coluna SEI lock. Prepare o banco para ativar o bloqueio de edição. Recarregue o SEI."
     );
+    return true;
   }
 
   const FOLD_KEY = "seiNotion_optionsFolds";
@@ -1158,6 +1164,7 @@
       actOk ? els.stActReady.textContent : els.stActDs.textContent,
       foldClassFromStatus(actOk ? els.stActReady : els.stActDs)
     );
+    refreshOnboardUi();
   }
 
   function setFoldOpen(card, open) {
@@ -1223,7 +1230,492 @@
     updateFoldSummaries();
   }
 
+  const ONBOARD_STEPS = [
+    { id: "sei", label: "SEI", hint: "URL da instituição", optional: false, fold: "sei" },
+    { id: "notion", label: "Notion", hint: "Token e o seu nome", optional: false, fold: "notion" },
+    { id: "processos", label: "Processos", hint: "Banco e colunas", optional: false, fold: "processos" },
+    { id: "atividades", label: "Kanban", hint: "Atividades (opcional)", optional: true, fold: "atividades" },
+    { id: "done", label: "Pronto", hint: "Como usar no SEI", optional: false, fold: null, hero: true }
+  ];
+
+  const onboard = {
+    active: false,
+    index: 0
+  };
+
+  function onboardEls() {
+    return {
+      root: $("#onboard"),
+      steps: $("#onboardSteps"),
+      back: $("#btnOnboardBack"),
+      next: $("#btnOnboardNext"),
+      skip: $("#btnOnboardSkip"),
+      escape: $("#btnSkipOnboard"),
+      open: $("#btnOpenOnboard"),
+      homeBtn: $("#btnOpenHome"),
+      doneList: $("#onboardDoneList"),
+      doneLead: $("#onboardDoneLead"),
+      home: $("#home"),
+      homeOptions: $("#btnHomeOptions"),
+      homeGuide: $("#btnHomeGuide")
+    };
+  }
+
+  function clearOnboardHash() {
+    try {
+      const u = new URL(location.href);
+      if (u.hash === "#guia") u.hash = "";
+      u.searchParams.delete("setup");
+      history.replaceState(null, "", u.pathname + u.search + u.hash);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function mountOnboardSlots() {
+    document.querySelectorAll(".onboard-slot[data-slot]").forEach((slot) => {
+      const id = slot.getAttribute("data-slot");
+      const card = document.querySelector('.card-fold[data-fold="' + id + '"]');
+      const body = card && card.querySelector(".fold-body");
+      if (body && body.parentNode !== slot) slot.appendChild(body);
+    });
+  }
+
+  function unmountOnboardSlots() {
+    document.querySelectorAll(".onboard-slot[data-slot]").forEach((slot) => {
+      const id = slot.getAttribute("data-slot");
+      const card = document.querySelector('.card-fold[data-fold="' + id + '"]');
+      const body = slot.querySelector(".fold-body");
+      if (card && body) card.appendChild(body);
+    });
+  }
+
+  function seiIsActive() {
+    return !!(els.stSeiActive && els.stSeiActive.classList.contains("ok"));
+  }
+
+  function notionIsConnected() {
+    return !!(els.stNotion && els.stNotion.classList.contains("ok"));
+  }
+
+  function processIsReady() {
+    return !!(els.stReady && els.stReady.classList.contains("ok"));
+  }
+
+  function activitiesAreReady() {
+    return !!(els.stActReady && els.stActReady.classList.contains("ok"));
+  }
+
+  function stepIsComplete(step) {
+    if (!step) return false;
+    if (step.id === "sei") return seiIsActive();
+    if (step.id === "notion") return notionIsConnected();
+    if (step.id === "processos") return processIsReady();
+    if (step.id === "atividades") return activitiesAreReady();
+    if (step.id === "done") return false;
+    return false;
+  }
+
+  function stepStatusText(step) {
+    if (step.id === "sei") return els.stSeiActive ? els.stSeiActive.textContent : "";
+    if (step.id === "notion") return els.stNotion ? els.stNotion.textContent : "";
+    if (step.id === "processos") {
+      return processIsReady()
+        ? els.stReady.textContent
+        : els.stDs
+          ? els.stDs.textContent
+          : "";
+    }
+    if (step.id === "atividades") {
+      return activitiesAreReady()
+        ? els.stActReady.textContent
+        : els.stActDs
+          ? els.stActDs.textContent
+          : "";
+    }
+    return step.hint;
+  }
+
+  function firstIncompleteIndex() {
+    const order = ["sei", "notion", "processos"];
+    for (let i = 0; i < ONBOARD_STEPS.length; i++) {
+      const step = ONBOARD_STEPS[i];
+      if (step.id === "done") continue;
+      if (step.optional) continue;
+      if (order.includes(step.id) && !stepIsComplete(step)) return i;
+    }
+    if (!activitiesAreReady()) {
+      const act = ONBOARD_STEPS.findIndex((s) => s.id === "atividades");
+      if (act >= 0) return act;
+    }
+    return ONBOARD_STEPS.findIndex((s) => s.id === "done");
+  }
+
+  function renderOnboardRail() {
+    const { steps } = onboardEls();
+    if (!steps) return;
+    let n = 0;
+    steps.innerHTML = ONBOARD_STEPS.map((step, i) => {
+      if (step.hero) return "";
+      n += 1;
+      const done = i < onboard.index || (i !== onboard.index && stepIsComplete(step));
+      const current = i === onboard.index;
+      const cls = current ? "is-current" : done ? "is-done" : "is-todo";
+      const mark = done && !current ? "✓" : String(n);
+      const clickable = i <= onboard.index || done;
+      return `<li>
+        <button type="button" class="onboard-step ${cls}" data-onboard-index="${i}" ${current ? 'aria-current="step"' : ""} ${clickable ? "" : "disabled"}>
+          <span class="onboard-step-mark">${mark}</span>
+          <span class="onboard-step-copy">
+            <strong>${escapeHtml(step.label)}</strong>
+            <span>${escapeHtml(stepStatusText(step) || step.hint)}</span>
+          </span>
+        </button>
+      </li>`;
+    }).join("");
+  }
+
+  function nextLabel(step) {
+    if (step.id === "sei") return "Salvar e continuar";
+    if (step.id === "notion") return "Conectar e continuar";
+    if (step.id === "processos") return "Salvar e continuar";
+    if (step.id === "atividades") return "Salvar e continuar";
+    if (step.id === "done") return "Ir para as opções";
+    return "Continuar";
+  }
+
+  function renderOnboardDone() {
+    const { doneList, doneLead } = onboardEls();
+    if (doneLead) {
+      doneLead.innerHTML = processIsReady()
+        ? "Recarregue a aba do SEI. Ao lado do número do processo aparece o botão <strong>N</strong> — azul se já existe página no Notion."
+        : "Falta concluir o banco de processos para o botão N aparecer. Você pode terminar nas opções.";
+    }
+    if (!doneList) return;
+    const rows = [
+      {
+        ok: seiIsActive(),
+        text: seiIsActive()
+          ? "SEI autorizado: " + (els.stSeiSites ? els.stSeiSites.textContent : "ok")
+          : "SEI ainda sem permissão"
+      },
+      {
+        ok: notionIsConnected(),
+        text: notionIsConnected()
+          ? "Notion conectado neste navegador"
+          : "Notion ainda sem token"
+      },
+      {
+        ok: processIsReady(),
+        text: processIsReady()
+          ? "Banco de processos pronto"
+          : "Banco de processos pendente"
+      },
+      {
+        ok: activitiesAreReady(),
+        skip: !activitiesAreReady(),
+        text: activitiesAreReady()
+          ? "Kanban de atividades ativo"
+          : "Kanban não configurado (opcional)"
+      }
+    ];
+    doneList.innerHTML = rows
+      .map(
+        (r) =>
+          `<li class="${r.ok ? "" : r.skip ? "is-skip" : "is-skip"}">${escapeHtml(r.text)}</li>`
+      )
+      .join("");
+  }
+
+  function showOnboardPanel(index) {
+    const step = ONBOARD_STEPS[index];
+    if (!step) return;
+    document.querySelectorAll(".onboard-panel").forEach((panel) => {
+      panel.classList.toggle("is-active", panel.getAttribute("data-onboard") === step.id);
+    });
+    const { root, back, next, skip } = onboardEls();
+    if (root) {
+      root.classList.toggle("is-hero", !!step.hero);
+      const rail = root.querySelector(".onboard-rail");
+      if (rail) rail.setAttribute("aria-hidden", step.hero ? "true" : "false");
+    }
+    if (back) {
+      back.classList.toggle("hidden", !!step.hero);
+      back.textContent = index === 0 ? "Início" : "Voltar";
+    }
+    if (skip) {
+      skip.classList.toggle("hidden", !step.optional);
+      skip.textContent = "Pular por agora";
+    }
+    if (next) next.textContent = nextLabel(step);
+    if (step.id === "done") renderOnboardDone();
+    const heading = document.querySelector(
+      '.onboard-panel[data-onboard="' + step.id + '"] h2'
+    );
+    if (heading) {
+      heading.setAttribute("tabindex", "-1");
+      heading.focus({ preventScroll: true });
+    }
+    const scroll = $("#onboardScroll");
+    if (scroll) scroll.scrollTop = 0;
+  }
+
+  async function persistOnboardStep() {
+    const step = ONBOARD_STEPS[onboard.index];
+    try {
+      await SeiNotionStorage.saveSettings({
+        onboardingStep: step ? step.id : ""
+      });
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  async function goOnboard(index, opts) {
+    const next = Math.max(0, Math.min(ONBOARD_STEPS.length - 1, index));
+    onboard.index = next;
+    renderOnboardRail();
+    showOnboardPanel(next);
+    if (!opts?.silent) await persistOnboardStep();
+    const step = ONBOARD_STEPS[next];
+    if (step && step.id === "processos") {
+      const token = await SeiNotionStorage.getToken();
+      if (token && els.selDataSource && els.selDataSource.options.length <= 1) {
+        try {
+          await listDataSources();
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+    if (step && step.id === "atividades") {
+      const token = await SeiNotionStorage.getToken();
+      if (token && els.selActDataSource && els.selActDataSource.options.length <= 1) {
+        try {
+          await listActDataSources();
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+  }
+
+  function showHome() {
+    const { home } = onboardEls();
+    document.body.classList.add("is-home");
+    document.body.classList.remove("is-onboarding");
+    if (home) {
+      home.hidden = false;
+      home.classList.remove("hidden");
+    }
+    const app = document.querySelector(".app");
+    if (app) app.setAttribute("aria-hidden", "true");
+  }
+
+  function hideHome(keepAppHidden) {
+    const { home } = onboardEls();
+    document.body.classList.remove("is-home");
+    if (home) {
+      home.hidden = true;
+      home.classList.add("hidden");
+    }
+    if (!keepAppHidden) {
+      const app = document.querySelector(".app");
+      if (app) app.removeAttribute("aria-hidden");
+    }
+  }
+
+  function guideStartIndex() {
+    const incomplete = firstIncompleteIndex();
+    const step = ONBOARD_STEPS[incomplete];
+    if (step && step.id === "done") return 0;
+    return Math.max(0, incomplete);
+  }
+
+  function enterOnboarding(startIndex) {
+    const { root } = onboardEls();
+    if (!root) return;
+    hideHome(true);
+    onboard.active = true;
+    mountOnboardSlots();
+    document.body.classList.add("is-onboarding");
+    const app = document.querySelector(".app");
+    if (app) app.setAttribute("aria-hidden", "true");
+    root.hidden = false;
+    root.classList.remove("hidden");
+    goOnboard(typeof startIndex === "number" ? startIndex : 0);
+  }
+
+  function exitOnboarding() {
+    const { root } = onboardEls();
+    onboard.active = false;
+    unmountOnboardSlots();
+    document.body.classList.remove("is-onboarding");
+    const app = document.querySelector(".app");
+    if (app) app.removeAttribute("aria-hidden");
+    if (root) {
+      root.hidden = true;
+      root.classList.add("hidden");
+      root.classList.remove("is-hero");
+    }
+    applyDefaultFolds();
+    updateFoldSummaries();
+  }
+
+  async function leaveGuide() {
+    await SeiNotionStorage.saveSettings({ onboardingStep: "" });
+    exitOnboarding();
+    showHome();
+  }
+
+  async function finishOnboarding() {
+    await SeiNotionStorage.saveSettings({
+      onboardingComplete: true,
+      onboardingStep: ""
+    });
+    clearOnboardHash();
+    hideHome();
+    exitOnboarding();
+    toast("Configuração concluída. Recarregue o SEI para ver o botão N.");
+  }
+
+  async function skipOnboarding() {
+    await SeiNotionStorage.saveSettings({
+      onboardingStep: ""
+    });
+    clearOnboardHash();
+    hideHome();
+    exitOnboarding();
+  }
+
+  async function onboardNext() {
+    const step = ONBOARD_STEPS[onboard.index];
+    if (!step) return;
+    const { next } = onboardEls();
+    if (step.id === "done") {
+      await finishOnboarding();
+      return;
+    }
+    if (step.id === "sei") {
+      const ok = await saveAndActivateSeiSites();
+      if (ok) await goOnboard(onboard.index + 1);
+      return;
+    }
+    if (step.id === "notion") {
+      const editorName = (els.fldEditorName.value || "").trim();
+      await SeiNotionStorage.saveSettings({ editorName });
+      const typed = (els.fldToken.value || "").trim();
+      const existing = await SeiNotionStorage.getToken();
+      if (!existing && !typed) {
+        toast("Cole o token da integração do Notion.", "err");
+        return;
+      }
+      if (typed) {
+        setBusy(next, true);
+        try {
+          const ok = await connectNotion();
+          if (!ok) return;
+        } finally {
+          setBusy(next, false);
+        }
+      }
+      await goOnboard(onboard.index + 1);
+      return;
+    }
+    if (step.id === "processos") {
+      if (processIsReady()) {
+        await goOnboard(onboard.index + 1);
+        return;
+      }
+      setBusy(next, true);
+      try {
+        const ok = await saveDataSource();
+        if (ok) await goOnboard(onboard.index + 1);
+      } finally {
+        setBusy(next, false);
+      }
+      return;
+    }
+    if (step.id === "atividades") {
+      const selected = els.selActDataSource && els.selActDataSource.value;
+      if (!selected && !activitiesAreReady()) {
+        await goOnboard(onboard.index + 1);
+        return;
+      }
+      if (activitiesAreReady() && !selected) {
+        await goOnboard(onboard.index + 1);
+        return;
+      }
+      setBusy(next, true);
+      try {
+        const ok = await saveActDataSource();
+        if (ok) await goOnboard(onboard.index + 1);
+      } finally {
+        setBusy(next, false);
+      }
+    }
+  }
+
+  function refreshOnboardUi() {
+    if (!onboard.active) return;
+    renderOnboardRail();
+    if (ONBOARD_STEPS[onboard.index] && ONBOARD_STEPS[onboard.index].id === "done") {
+      renderOnboardDone();
+    }
+  }
+
+  function setupOnboard() {
+    const ui = onboardEls();
+    if (!ui.root) return;
+    if (ui.next) ui.next.addEventListener("click", () => onboardNext());
+    if (ui.back) {
+      ui.back.addEventListener("click", () => {
+        if (onboard.index > 0) goOnboard(onboard.index - 1);
+        else leaveGuide();
+      });
+    }
+    if (ui.skip) {
+      ui.skip.addEventListener("click", () => goOnboard(onboard.index + 1));
+    }
+    if (ui.escape) ui.escape.addEventListener("click", skipOnboarding);
+    if (ui.open) {
+      ui.open.addEventListener("click", () => enterOnboarding(guideStartIndex()));
+    }
+    if (ui.homeBtn) {
+      ui.homeBtn.addEventListener("click", () => {
+        exitOnboarding();
+        showHome();
+      });
+    }
+    if (ui.homeOptions) {
+      ui.homeOptions.addEventListener("click", skipOnboarding);
+    }
+    if (ui.homeGuide) {
+      ui.homeGuide.addEventListener("click", () => enterOnboarding(0));
+    }
+    if (ui.steps) {
+      ui.steps.addEventListener("click", (ev) => {
+        const btn = ev.target.closest && ev.target.closest("[data-onboard-index]");
+        if (!btn || btn.disabled) return;
+        const i = Number(btn.getAttribute("data-onboard-index"));
+        if (Number.isFinite(i)) goOnboard(i);
+      });
+    }
+  }
+
+  function bindOpenHomeSignal() {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "session" && area !== "local") return;
+      if (!changes.seiNotion_openHome) return;
+      if (onboard.active) exitOnboarding();
+      showHome();
+    });
+  }
+
   async function init() {
+    showHome();
+    bindOpenHomeSignal();
+    setupOnboard();
     try {
       els.version.textContent = chrome.runtime.getManifest().version;
     } catch (_) {

@@ -26,9 +26,11 @@ Se duas pessoas abrirem o mesmo processo, a primeira edita; a segunda vê o nome
 1. `chrome://extensions` → Modo do desenvolvedor
 2. **Carregar sem compactação** → pasta `SEI-Notion`
 
-Na primeira instalação as opções abrem sozinhas.
+As opções abrem numa tela inicial com dois caminhos: **Opções** (todos os ajustes) ou **Guia passo a passo** (uma etapa de cada vez). No topo da página completa dá para voltar ao **Início** ou reabrir o guia.
 
 ## Configuração (cada usuário)
+
+O guia cobre os mesmos passos abaixo. A página de opções completa continua disponível a qualquer momento.
 
 ### 1. URL do SEI
 
@@ -93,4 +95,4 @@ Mesmo padrão do SEI Blocos / SEI Fluxo: URL do SEI configurável e content scri
 
 ## Versão
 
-**0.2.0** — Kanban com reordenação e scroll no arraste, opções reescritas para iniciantes, kit inicial alinhado ao recorte atual (Número SEI, tipo, status, lock).
+**0.3.0** — tela inicial das opções com escolha entre ajustes e guia passo a passo.

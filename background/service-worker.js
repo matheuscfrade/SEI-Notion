@@ -256,11 +256,24 @@ function fail(err) {
   return { ok: false, error: err?.message || String(err) };
 }
 
+async function openOptionsHome() {
+  try {
+    await chrome.storage.session.set({ seiNotion_openHome: Date.now() });
+  } catch (_) {
+    try {
+      await chrome.storage.local.set({ seiNotion_openHome: Date.now() });
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  chrome.runtime.openOptionsPage();
+}
+
 chrome.runtime.onInstalled.addListener(async (details) => {
   await Storage.ensureSeeded();
   await syncContentScripts().catch(() => {});
   if (details.reason === "install") {
-    chrome.runtime.openOptionsPage();
+    openOptionsHome();
   }
 });
 
@@ -365,6 +378,13 @@ async function openWorkbenchTab(nup) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const type = message && message.type;
+
+  if (type === "SEI_NOTION_OPEN_OPTIONS_HOME") {
+    openOptionsHome()
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse(fail(err)));
+    return true;
+  }
 
   if (type === "SEI_NOTION_OPEN_WORKBENCH") {
     const nup = String(message.processNumber || "").trim();
