@@ -4,10 +4,16 @@ Thumbs.db
 .idea/
 .vscode/
 node_modules/
+
+# Artefatos da Chrome Web Store / empacotamento (somente local)
 dist-zip/
-*.crx
-*.pem
 store/
+screenshots/
 scripts/pack-store.py
 scripts/capture-store-shots.py
 scripts/make-pitch-pdf.py
+*.crx
+*.pem
+.env
+.env.*
+*.local
