@@ -676,19 +676,48 @@
     return null;
   }
 
-  function toIsoDay(value) {
+  function parseDateBr(value) {
     const s = String(value || "").trim();
+    if (!s) return null;
     const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (iso) return iso[1] + "-" + iso[2] + "-" + iso[3];
+    if (iso) {
+      const y = Number(iso[1]);
+      const mo = Number(iso[2]);
+      const d = Number(iso[3]);
+      const dt = new Date(y, mo - 1, d);
+      if (
+        dt.getFullYear() !== y ||
+        dt.getMonth() !== mo - 1 ||
+        dt.getDate() !== d
+      ) {
+        return null;
+      }
+      return iso[1] + "-" + iso[2] + "-" + iso[3];
+    }
     const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (!br) return "";
+    if (!br) return null;
+    const d = Number(br[1]);
+    const mo = Number(br[2]);
+    const y = Number(br[3]);
+    const dt = new Date(y, mo - 1, d);
+    if (
+      dt.getFullYear() !== y ||
+      dt.getMonth() !== mo - 1 ||
+      dt.getDate() !== d
+    ) {
+      return null;
+    }
     return (
-      br[3] +
+      String(y) +
       "-" +
-      String(br[2]).padStart(2, "0") +
+      String(mo).padStart(2, "0") +
       "-" +
-      String(br[1]).padStart(2, "0")
+      String(d).padStart(2, "0")
     );
+  }
+
+  function toIsoDay(value) {
+    return parseDateBr(value) || "";
   }
 
   function asText(value) {
@@ -1224,6 +1253,7 @@
     sameNup,
     summarizePage,
     writeProperties,
+    parseDateBr,
     mappingTypes,
     missingPrepared,
     processNumberFilter,

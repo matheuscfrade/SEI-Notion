@@ -95,4 +95,6 @@ Mesmo padrão do SEI Blocos / SEI Fluxo: URL do SEI configurável e content scri
 
 ## Versão
 
+**0.3.1** — corrige o parser de data BR ao salvar prazo em atividades.
+
 **0.3.0** — tela inicial das opções com escolha entre ajustes e guia passo a passo.
