@@ -17,3 +17,7 @@ scripts/make-pitch-pdf.py
 .env
 .env.*
 *.local
+
+# Cache de bytecode do Python
+__pycache__/
+*.py[cod]
