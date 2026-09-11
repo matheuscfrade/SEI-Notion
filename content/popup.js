@@ -1674,6 +1674,12 @@
 
   function close() {
     const ctx = current && current.ctx;
+    let form = null;
+    try {
+      if (current && current.shadow) form = readFormFrom(current.shadow, ctx);
+    } catch (_) {
+      form = null;
+    }
     stopPanelWatch();
     if (current && current.onKey && current.doc) {
       current.doc.removeEventListener("keydown", current.onKey, true);
@@ -1696,7 +1702,7 @@
     showOtherInfo = false;
     if (ctx && ctx.onClose) {
       try {
-        ctx.onClose();
+        ctx.onClose(form);
       } catch (_) {
         /* ignore */
       }

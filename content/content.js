@@ -45,6 +45,7 @@
 
   let lastNumbersKey = "";
   let heartbeatTimer = null;
+  let lockSession = 0;
 
   function send(type, payload) {
     return chrome.runtime.sendMessage({ type, ...(payload || {}) });
@@ -210,9 +211,13 @@
         deleteActivityTodo(nup, activityId, blockId),
       onEditActivityTodo: (activityId, blockId, text) =>
         editActivityTodo(nup, activityId, blockId, text),
-      onClose: () => releaseHeld(),
+      onClose: (form) => persistAndRelease(form),
       onCollapse: () => {
-        releaseHeld().then(() => refreshPopup({ preserveForm: true }));
+        const form =
+          SeiNotionPopup.readForm && SeiNotionPopup.readForm();
+        persistAndRelease(form).then(() =>
+          refreshPopup({ preserveForm: true })
+        );
       },
       onEditIntent: () => requestLock(),
       onPopout: () => openWorkbench(),
@@ -344,8 +349,10 @@
 
   async function tryLock(page) {
     if (!page || !page.pageId) return page;
+    const session = ++lockSession;
     try {
       const res = await send("SEI_NOTION_LOCK", { pageId: page.pageId });
+      if (session !== lockSession) return pageFor(page.processNumber) || page;
       if (res && res.page) mergePage(res.page);
       if (res && res.held) {
         state.heldPageId = page.pageId;
@@ -370,6 +377,85 @@
     } catch (_) {
       /* ignore */
     }
+  }
+
+  async function persistAndRelease(form) {
+    const closeSession = lockSession;
+    const heldId = state.heldPageId;
+    const nup =
+      (form && form.processNumber) ||
+      (SeiNotionPopup.processNumber && SeiNotionPopup.processNumber()) ||
+      "";
+    const page = nup ? pageFor(nup) : pageFor(form && form.processNumber);
+    const locked = !!(page && lockHeldByOther(page.lock));
+    const Schema = globalThis.SeiNotionSchema;
+    const intent =
+      Schema && Schema.popupCloseIntent
+        ? Schema.popupCloseIntent({
+            page,
+            form,
+            lockedByOther: locked,
+            heldPageId: heldId,
+            currentHeldId: state.heldPageId,
+            lockSession,
+            closeSession
+          })
+        : {
+            persist: !!(page && page.pageId && form && !locked),
+            unlock: !!heldId,
+            unlockPageId: heldId || null,
+            clearBusy: true
+          };
+
+    if (intent.persist && page && page.pageId) {
+      state.creating = nup || page.processNumber || null;
+      paint();
+      try {
+        const res = await send("SEI_NOTION_UPDATE", {
+          pageId: page.pageId,
+          patch: {
+            ...form,
+            processNumber: (form && form.processNumber) || page.processNumber
+          }
+        });
+        if (!res?.ok) throw new Error(res?.error || "Falha ao atualizar.");
+        mergePage(applyFormToPage(form, res.page || page));
+        state.error = null;
+      } catch (err) {
+        state.error = err.message || String(err);
+      }
+    }
+
+    const after =
+      Schema && Schema.popupCloseIntent
+        ? Schema.popupCloseIntent({
+            page,
+            form,
+            lockedByOther: locked,
+            heldPageId: heldId,
+            currentHeldId: state.heldPageId,
+            lockSession,
+            closeSession
+          })
+        : intent;
+    if (after.unlock && after.unlockPageId) {
+      if (state.heldPageId === after.unlockPageId) {
+        await releaseHeld();
+      } else {
+        try {
+          await send("SEI_NOTION_UNLOCK", { pageId: after.unlockPageId });
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+
+    if (intent.clearBusy) {
+      state.creating = null;
+      state.loading = false;
+      state.busyLabel = "";
+    }
+    paint();
   }
 
   async function retryLock(nup) {
@@ -493,13 +579,6 @@
     };
     const nup = info.processNumber;
     const uiMode = usePanelOnThisPage() ? "panel" : "modal";
-    if (
-      SeiNotionPopup.isOpen() &&
-      SeiNotionPopup.processNumber() &&
-      SeiNotionPopup.processNumber() !== nup
-    ) {
-      await releaseHeld();
-    }
     const ctx = popupCtx({ ...info, uiMode });
     if (SeiNotionPopup.isOpen() && SeiNotionPopup.processNumber() === nup) {
       if (uiMode === "panel" && SeiNotionPopup.reveal) SeiNotionPopup.reveal();
@@ -516,9 +595,11 @@
       SeiNotionPopup.setBusy(true, "Carregando dados do Notion…");
     }
     await query([nup], { merge: true, keepBusy: true });
+    if (await abandonIfClosed(nup)) return;
     const page = pageFor(nup);
     if (page && page.pageId) {
       if (uiMode !== "panel") await tryLock(page);
+      if (await abandonIfClosed(nup)) return;
       if (SeiNotionPopup.isOpen()) {
         SeiNotionPopup.setBusy(true, "Carregando atividades…");
       }
@@ -526,6 +607,7 @@
         loadChecklist(page.pageId),
         loadActivities(page.pageId)
       ]);
+      if (await abandonIfClosed(nup)) return;
     } else {
       state.checklist = [];
       state.activities = [];
@@ -534,6 +616,7 @@
     state.busyLabel = "";
     if (SeiNotionPopup.isOpen()) SeiNotionPopup.setBusy(false);
     refreshPopup({ preserveForm: false });
+    paint();
   }
 
   async function loadActivities(pageId) {
@@ -998,17 +1081,60 @@
     }
   }
 
-  function currentBusyNup() {
-    if (state.creating) return state.creating;
-    if (!state.loading) return "";
+  function popupIsThis(nup) {
     try {
-      if (SeiNotionPopup && SeiNotionPopup.isOpen && SeiNotionPopup.isOpen()) {
-        return (SeiNotionPopup.processNumber && SeiNotionPopup.processNumber()) || "";
-      }
+      return !!(
+        SeiNotionPopup &&
+        SeiNotionPopup.isOpen &&
+        SeiNotionPopup.isOpen() &&
+        SeiNotionPopup.processNumber &&
+        sameNup(SeiNotionPopup.processNumber(), nup)
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function abandonIfClosed(nup) {
+    if (popupIsThis(nup)) return false;
+    const page = nup ? pageFor(nup) : null;
+    if (page && page.pageId && state.heldPageId === page.pageId) {
+      await releaseHeld();
+    }
+    state.loading = false;
+    state.creating = null;
+    state.busyLabel = "";
+    paint();
+    return true;
+  }
+
+  function currentBusyNup() {
+    const Schema = globalThis.SeiNotionSchema;
+    let popupOpen = false;
+    let popupNup = "";
+    try {
+      popupOpen = !!(
+        SeiNotionPopup &&
+        SeiNotionPopup.isOpen &&
+        SeiNotionPopup.isOpen()
+      );
+      popupNup =
+        (SeiNotionPopup &&
+          SeiNotionPopup.processNumber &&
+          SeiNotionPopup.processNumber()) ||
+        "";
     } catch (_) {
       /* ignore */
     }
-    return "";
+    if (Schema && Schema.badgeBusyNup) {
+      return Schema.badgeBusyNup(
+        { creating: state.creating, loading: state.loading },
+        { isOpen: popupOpen, processNumber: popupNup }
+      );
+    }
+    if (state.creating) return state.creating;
+    if (!state.loading) return "";
+    return popupOpen ? popupNup : "";
   }
 
   function handlers() {
@@ -1285,11 +1411,11 @@
   });
 
   window.addEventListener("pagehide", () => {
-    releaseHeld();
-    if (!isProcessTreeDoc()) return;
-    if (SeiNotionPopup.isOpen() && SeiNotionPopup.isPanel && SeiNotionPopup.isPanel()) {
-      SeiNotionPopup.close();
-    }
+    const form =
+      SeiNotionPopup.isOpen() && SeiNotionPopup.readForm
+        ? SeiNotionPopup.readForm()
+        : null;
+    persistAndRelease(form);
   });
 
   try {

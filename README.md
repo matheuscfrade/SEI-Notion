@@ -14,7 +14,7 @@ Na **Controle de Processos** e no **processo aberto**:
 - o botão abre um **popup** para ver e editar especificação, status, prazo, marcadores, atribuição e observações
 - **Quadro de Atividades (Kanban)**: vincule um banco de dados de atividades conectado ao banco de processos por relação (`Relation`). Cada processo ganha um quadro Kanban completo com colunas de status, drag & drop direto no popup, exclusão e checklists internos expansíveis em cada atividade.
 - **Modelos de processos (atividades e checklists)**: no banco de atividades, crie um modelo com a lista de atividades e, em cada uma, tarefas (`/to-do`). No popup, **Importar atividades** aplica o modelo ao Kanban. Checklists também podem ser editados no próprio card.
-- **Salvar alterações** atualiza a página existente — não cria outra
+- **Salvar alterações** atualiza a página existente — não cria outra. Fechar o popup também salva e libera a edição (o badge N para de piscar)
 - se ainda não houver página, o popup tem **Criar página no Notion**
 
 O vínculo é a propriedade **Número SEI** (ex.: `23123.000123/2024-01`), não um texto solto na descrição.
@@ -94,6 +94,10 @@ Worker  →  único lugar que chama api.notion.com (a API não tem CORS)
 Mesmo padrão do SEI Blocos / SEI Fluxo: URL do SEI configurável e content scripts só nos hosts autorizados.
 
 ## Versão
+
+**1.0.1** — inclui a pasta `workbench` no pacote da loja (⧉ Abrir em nova aba) e salva ao fechar o popup, liberando o badge de edição.
+
+**1.0.0** — primeira versão estável na Chrome Web Store; nome descritivo para descoberta na busca.
 
 **0.3.1** — corrige o parser de data BR ao salvar prazo em atividades.
 

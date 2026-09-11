@@ -164,6 +164,35 @@
     return lockIsActive(lock) && lock.id && lock.id !== editorId;
   }
 
+  function badgeBusyNup(state, popup) {
+    const creating = state && state.creating;
+    if (creating) return creating;
+    if (!state || !state.loading) return "";
+    if (popup && popup.isOpen) return popup.processNumber || "";
+    return "";
+  }
+
+  function popupCloseIntent(opts) {
+    const page = opts && opts.page;
+    const form = opts && opts.form;
+    const lockedByOther = !!(opts && opts.lockedByOther);
+    const heldPageId = (opts && opts.heldPageId) || null;
+    const currentHeldId =
+      opts && "currentHeldId" in opts ? opts.currentHeldId : heldPageId;
+    const lockSession = opts && opts.lockSession;
+    const closeSession = opts && opts.closeSession;
+    const reopenedSame =
+      !!heldPageId &&
+      lockSession !== closeSession &&
+      currentHeldId === heldPageId;
+    return {
+      persist: !!(page && page.pageId && form && !lockedByOther),
+      unlock: !!heldPageId && !reopenedSame,
+      unlockPageId: heldPageId && !reopenedSame ? heldPageId : null,
+      clearBusy: true
+    };
+  }
+
   function makeLock(editor, ttlMs) {
     return {
       id: editor && editor.id ? String(editor.id) : "anon",
@@ -1269,6 +1298,8 @@
     encodeLock,
     lockIsActive,
     lockHeldByOther,
-    makeLock
+    makeLock,
+    badgeBusyNup,
+    popupCloseIntent
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);
