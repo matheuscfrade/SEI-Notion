@@ -500,7 +500,8 @@
     return [];
   }
 
-  const NUP_RE = /\d{4,7}\.\d{6}\/\d{4}-\d{2}/;
+  const NUP_RE =
+    /\d{4,7}\.\d{6}\/\d{4}-\d{2}|\d{2}\.\d{1,2}\.\d{6,10}-\d{1,2}/;
 
   function extractNup(text) {
     const m = String(text || "").match(NUP_RE);
