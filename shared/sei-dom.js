@@ -3,7 +3,7 @@
  */
 (function (root) {
   const PROCESS_NUMBER_RE =
-    /\b\d{5}\.\d{6}\/\d{4}-\d{2}\b|\b\d{4}\.\d{6}\/\d{4}-\d{2}\b|\b\d{7}\.\d{6}\/\d{4}-\d{2}\b/;
+    /\b\d{5}\.\d{6}\/\d{4}-\d{2}\b|\b\d{4}\.\d{6}\/\d{4}-\d{2}\b|\b\d{7}\.\d{6}\/\d{4}-\d{2}\b|\b\d{2}\.\d{1,2}\.\d{6,10}-\d{1,2}\b/;
 
   const TABELAS_LISTA =
     "#tblProcessosRecebidos, #tblProcessosGerados, #tblProcessosAtribuido, #tblProcessosDetalhado, #tblProcessosTrabalho";
@@ -496,7 +496,7 @@
     try {
       const title = String(d.title || "").trim();
       const m = title.match(
-        /(\d{5}\.\d{6}\/\d{4}-\d{2}|\d{4}\.\d{6}\/\d{4}-\d{2}|\d{7}\.\d{6}\/\d{4}-\d{2})\s*[\-–—|]\s*(.+)$/
+        /(\d{5}\.\d{6}\/\d{4}-\d{2}|\d{4}\.\d{6}\/\d{4}-\d{2}|\d{7}\.\d{6}\/\d{4}-\d{2}|\d{2}\.\d{1,2}\.\d{6,10}-\d{1,2})\s*[\-–—|]\s*(.+)$/
       );
       if (m && m[2]) {
         const value = sanitizeProcessType(m[2].replace(/\s*[-–—]\s*SEI.*$/i, ""));
@@ -818,7 +818,7 @@
     t = t.replace(/^marcador(es)?\s*[:\-–]\s*/i, "");
     t = t.replace(/\s*\(\s*prazo\s*:\s*\d{1,2}\/\d{1,2}\/\d{4}\s*\)\s*$/i, "");
     if (!t || isMarkerLabel(t)) return "";
-    if (PROCESS_NUMBER_RE.test(t) || /\d{4,7}\.\d{6}\/\d{4}-\d{2}/.test(t)) return "";
+    if (PROCESS_NUMBER_RE.test(t)) return "";
     if (t.length >= 80) return "";
     if (/^gerenciar\s+marcador/i.test(t)) return "";
     return t;
