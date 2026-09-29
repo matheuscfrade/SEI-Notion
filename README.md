@@ -16,6 +16,7 @@ Na **Controle de Processos** e no **processo aberto**:
 - **Modelos de processos (atividades e checklists)**: no banco de atividades, crie um modelo com a lista de atividades e, em cada uma, tarefas (`/to-do`). No popup, **Importar atividades** aplica o modelo ao Kanban. Checklists também podem ser editados no próprio card.
 - **Salvar alterações** atualiza a página existente — não cria outra. Fechar o popup também salva e libera a edição (o badge N para de piscar)
 - se ainda não houver página, o popup tem **Criar página no Notion**
+- **Processos no Notion**: na Controle de Processos, o **N** na barra de comandos abre a lista das páginas do banco. Há filtro para **Processos SEI** e **Processos fora do SEI**; em cada coluna, status e tipo (lista), prazo (`dd/mm/aaaa`) e busca textual nos demais campos. Clicar numa linha destaca o processo e abre o popup (com o Kanban) **por cima da lista**, sem fechá-la. **Novo processo** cria uma página sem Número SEI, para rotina que não está no SEI, com o mesmo popup.
 
 O vínculo é a propriedade **Número SEI** (ex.: `23123.000123/2024-01`), não um texto solto na descrição.
 
@@ -94,6 +95,8 @@ Worker  →  único lugar que chama api.notion.com (a API não tem CORS)
 Mesmo padrão do SEI Blocos / SEI Fluxo: URL do SEI configurável e content scripts só nos hosts autorizados.
 
 ## Versão
+
+**1.0.3** — na Controle de Processos, o **N** da barra de comandos lista os processos do Notion (com e sem Número SEI), com filtros por coluna. O popup de atividades abre sobreposto à lista, com a linha clicada destacada.
 
 **1.0.1** — inclui a pasta `workbench` no pacote da loja (⧉ Abrir em nova aba) e salva ao fechar o popup, liberando o badge de edição.
 

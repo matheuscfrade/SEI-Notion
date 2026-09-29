@@ -1231,6 +1231,27 @@
   }
 
 
+  function findListToolbar(doc) {
+    const d = doc || document;
+    const sels = [
+      "#divInfraBarraComandos",
+      "#divInfraBarraComandosSuperior",
+      "#divInfraBarraComandosInferior",
+      ".infraBarraComandos",
+      "#divComandos",
+      "#tblInfraBarraComandos"
+    ];
+    for (let i = 0; i < sels.length; i += 1) {
+      try {
+        const el = d.querySelector(sels[i]);
+        if (el) return el;
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    return null;
+  }
+
   function superficie(doc) {
     const d = doc || document;
     const url = safeUrl(d);
@@ -1458,6 +1479,7 @@
     notesFromScope,
     findNotes,
     findProcessAnchors,
+    findListToolbar,
     superficie,
     processUrl,
     isControlListUrl,

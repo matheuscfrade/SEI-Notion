@@ -427,6 +427,65 @@
     };
   }
 
+  async function queryAllProcessPages(token, settings, opts) {
+    const meta = await queryByProcessNumbers(token, settings, [], opts);
+    const mapping = settings.mapping;
+    if (!mapping.processNumber) {
+      return { ...meta, pages: [], truncated: false };
+    }
+    const raw = [];
+    let cursor = undefined;
+    let truncated = false;
+    const maxPages = 5;
+    for (let i = 0; i < maxPages; i += 1) {
+      const body = {
+        page_size: 100,
+        sorts: [{ timestamp: "created_time", direction: "descending" }]
+      };
+      if (cursor) body.start_cursor = cursor;
+      const page = await notionFetch(
+        token,
+        "/databases/" + settings.dataSourceId + "/query",
+        {
+          method: "POST",
+          body
+        }
+      );
+      (page.results || []).forEach((p) => {
+        if (p && p.object === "page") raw.push(p);
+      });
+      if (!page.has_more) {
+        truncated = false;
+        break;
+      }
+      cursor = page.next_cursor;
+      truncated = true;
+    }
+    const pages = raw.map((p) => Schema().summarizePage(p, mapping));
+    return {
+      ...meta,
+      pages,
+      truncated
+    };
+  }
+
+  async function queryPagesWithoutProcessNumber(token, settings, opts) {
+    const result = await queryAllProcessPages(token, settings, opts);
+    return {
+      ...result,
+      pages: result.pages.filter((p) =>
+        Schema().isInternalProcess(p.processNumber)
+      )
+    };
+  }
+
+  async function summarizePageById(token, settings, pageId) {
+    if (!pageId) return null;
+    const raw = await retrievePage(token, pageId);
+    if (!raw || raw.object !== "page") return null;
+    return Schema().summarizePage(raw, settings.mapping);
+  }
+
   function extractPageTitle(page) {
     if (!page) return "";
     if (page.properties) {
@@ -1754,6 +1813,9 @@
     inspectActivitiesDataSource,
     prepareActivitiesDataSource,
     queryByProcessNumbers,
+    queryAllProcessPages,
+    queryPagesWithoutProcessNumber,
+    summarizePageById,
     queryActivitiesByProcess,
     findPageByProcessNumber,
     createPage,

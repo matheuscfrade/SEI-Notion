@@ -17,6 +17,7 @@
     labelOptions: [],
     mapping: {},
     extraFields: [],
+    notionReady: false,
     templates: [],
     checklist: [],
     activities: [],
@@ -58,8 +59,64 @@
     return a === b;
   }
 
-  function pageFor(nup) {
-    return (state.pages || []).find((p) => sameNup(p.processNumber, nup)) || null;
+  function popupPageId() {
+    try {
+      return (
+        (SeiNotionPopup && SeiNotionPopup.pageId && SeiNotionPopup.pageId()) ||
+        ""
+      );
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function pageFor(nup, pageId) {
+    const Schema = globalThis.SeiNotionSchema;
+    const pid = pageId || popupPageId();
+    if (Schema && Schema.findPage) {
+      return Schema.findPage(state.pages, {
+        processNumber: nup,
+        pageId: pid
+      });
+    }
+    if (nup) {
+      return (state.pages || []).find((p) => sameNup(p.processNumber, nup)) || null;
+    }
+    if (pid) {
+      return (state.pages || []).find((p) => p.pageId === pid) || null;
+    }
+    return null;
+  }
+
+  function isInternalRef(info) {
+    const Schema = globalThis.SeiNotionSchema;
+    if (info && info.internal) return true;
+    const nup = info && info.processNumber;
+    return !!(
+      Schema &&
+      Schema.isInternalProcess &&
+      Schema.isInternalProcess(nup)
+    );
+  }
+
+  function refKey(info) {
+    const Schema = globalThis.SeiNotionSchema;
+    if (Schema && Schema.popupKey) return Schema.popupKey(info || {});
+    return (info && (info.processNumber || info.pageId)) || "";
+  }
+
+  function openPopupRef() {
+    const nup =
+      (SeiNotionPopup &&
+        SeiNotionPopup.processNumber &&
+        SeiNotionPopup.processNumber()) ||
+      "";
+    const pageId = popupPageId();
+    return {
+      processNumber: nup,
+      pageId,
+      internal: isInternalRef({ processNumber: nup, pageId, internal: !nup })
+    };
   }
 
   function mergePage(page) {
@@ -108,8 +165,15 @@
   }
 
   function popupCtx(extra) {
-    const nup = extra.processNumber;
-    const page = extra.page || pageFor(nup);
+    const nup = extra.processNumber || "";
+    const pageId =
+      extra.pageId || (extra.page && extra.page.pageId) || popupPageId();
+    const page = extra.page || pageFor(nup, pageId);
+    const internal = isInternalRef({
+      processNumber: nup,
+      pageId: pageId || (page && page.pageId),
+      internal: extra.internal
+    });
     const locked = !!(page && lockHeldByOther(page.lock));
     const lockMine = !!(
       page &&
@@ -155,6 +219,8 @@
 
     return {
       processNumber: nup,
+      pageId: pageId || (page && page.pageId) || "",
+      internal,
       name: effectiveName,
       description: effectiveDescription,
       seiUrl:
@@ -231,13 +297,20 @@
   function refreshPopup(opts) {
     if (!SeiNotionPopup.isOpen()) return;
     const nup = SeiNotionPopup.processNumber();
+    const pageId = popupPageId();
     const prev = (opts && opts.preserveForm !== false && SeiNotionPopup.readForm)
       ? SeiNotionPopup.readForm()
       : null;
-    const page = pageFor(nup);
+    const page = pageFor(nup, pageId);
     SeiNotionPopup.update(
       popupCtx({
         processNumber: nup,
+        pageId: pageId || (page && page.pageId) || "",
+        internal: isInternalRef({
+          processNumber: nup,
+          pageId,
+          internal: !nup
+        }),
         page,
         name:
           (prev && prev.name) ||
@@ -352,7 +425,7 @@
     const session = ++lockSession;
     try {
       const res = await send("SEI_NOTION_LOCK", { pageId: page.pageId });
-      if (session !== lockSession) return pageFor(page.processNumber) || page;
+      if (session !== lockSession) return pageFor(page.processNumber, page.pageId) || page;
       if (res && res.page) mergePage(res.page);
       if (res && res.held) {
         state.heldPageId = page.pageId;
@@ -364,7 +437,7 @@
     } catch (_) {
       /* ignore */
     }
-    return pageFor(page.processNumber) || page;
+    return pageFor(page.processNumber, page.pageId) || page;
   }
 
   async function releaseHeld() {
@@ -386,7 +459,13 @@
       (form && form.processNumber) ||
       (SeiNotionPopup.processNumber && SeiNotionPopup.processNumber()) ||
       "";
-    const page = nup ? pageFor(nup) : pageFor(form && form.processNumber);
+    const page =
+      pageFor(
+        nup,
+        (form && form.pageId) || popupPageId()
+      ) ||
+      (heldId && (state.pages || []).find((p) => p.pageId === heldId)) ||
+      null;
     const locked = !!(page && lockHeldByOther(page.lock));
     const Schema = globalThis.SeiNotionSchema;
     const intent =
@@ -459,8 +538,17 @@
   }
 
   async function retryLock(nup) {
-    await query([nup], { merge: true });
-    const page = pageFor(nup);
+    const pageId = popupPageId();
+    if (nup) await query([nup], { merge: true });
+    else if (pageId) {
+      try {
+        const res = await send("SEI_NOTION_GET_PAGE", { pageId });
+        if (res && res.page) mergePage(res.page);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    const page = pageFor(nup, pageId);
     if (page) await tryLock(page);
     refreshPopup({ preserveForm: false });
   }
@@ -469,6 +557,7 @@
     try {
       const res = await send("SEI_NOTION_CONFIG_STATUS");
       if (res && res.ok) {
+        state.notionReady = !!res.ready;
         state.editor = {
           id: res.editorId || "",
           name: res.editorName || "Alguém"
@@ -486,7 +575,7 @@
 
   async function requestLock() {
     const nup = SeiNotionPopup.processNumber();
-    const page = pageFor(nup);
+    const page = pageFor(nup, popupPageId());
     if (!page || !page.pageId) return;
     if (state.heldPageId === page.pageId) return;
     if (lockHeldByOther(page.lock)) return;
@@ -495,12 +584,20 @@
   }
 
   async function create(payload) {
-    const existing = pageFor(payload.processNumber);
+    const existing = pageFor(payload.processNumber, payload.pageId);
     if (existing) {
       await update(existing.pageId, payload);
       return;
     }
-    state.creating = payload.processNumber;
+    if (
+      isInternalRef(payload) &&
+      !String((payload && payload.name) || "").trim()
+    ) {
+      state.error = "Informe um título para o processo.";
+      refreshPopup({ preserveForm: true });
+      return;
+    }
+    state.creating = payload.processNumber || payload.pageId || "internal-new";
     state.error = null;
     paint();
     SeiNotionPopup.setBusy(true, "Criando página no Notion…");
@@ -509,6 +606,35 @@
       if (!res?.ok) throw new Error(res?.error || "Não foi possível criar a página.");
       const saved = applyFormToPage(payload, res.page);
       mergePage(saved);
+      if (
+        saved.pageId &&
+        globalThis.SeiNotionUnlinkedList &&
+        SeiNotionUnlinkedList.remember &&
+        isInternalRef({
+          processNumber: saved.processNumber,
+          pageId: saved.pageId,
+          internal: !saved.processNumber
+        })
+      ) {
+        SeiNotionUnlinkedList.remember(saved);
+        if (SeiNotionUnlinkedList.select) SeiNotionUnlinkedList.select(saved);
+      }
+      if (saved.pageId && SeiNotionPopup.isOpen()) {
+        SeiNotionPopup.update(
+          popupCtx({
+            processNumber: saved.processNumber || payload.processNumber || "",
+            pageId: saved.pageId,
+            page: saved,
+            internal: isInternalRef({
+              processNumber: saved.processNumber,
+              pageId: saved.pageId,
+              internal: !saved.processNumber
+            }),
+            name: saved.title || payload.name || ""
+          }),
+          { preserveForm: false }
+        );
+      }
       if (Array.isArray(res.templates)) state.templates = res.templates;
       state.checklist = Array.isArray(res.checklist) ? res.checklist : [];
       if (saved.pageId) {
@@ -567,6 +693,19 @@
 
   async function openPopup(info, opts) {
     const options = opts || {};
+    const nup = info.processNumber || "";
+    const pageId = info.pageId || (info.page && info.page.pageId) || "";
+    const internal = isInternalRef({
+      processNumber: nup,
+      pageId,
+      internal: info.internal || (!nup && !pageId)
+    });
+    const incoming = {
+      processNumber: nup,
+      pageId,
+      internal,
+      page: info.page || null
+    };
     state.selectedTemplateId = "";
     state.seiContext = {
       labels: info.labels || [],
@@ -577,29 +716,42 @@
       seiUrl: info.seiUrl || state.seiContext.seiUrl || "",
       due: info.due || state.seiContext.due || ""
     };
-    const nup = info.processNumber;
     const uiMode = usePanelOnThisPage() ? "panel" : "modal";
-    const ctx = popupCtx({ ...info, uiMode });
-    if (SeiNotionPopup.isOpen() && SeiNotionPopup.processNumber() === nup) {
+    const ctx = popupCtx({ ...info, processNumber: nup, pageId, internal, uiMode });
+    if (SeiNotionPopup.isOpen() && refKey(openPopupRef()) === refKey(incoming)) {
       if (uiMode === "panel" && SeiNotionPopup.reveal) SeiNotionPopup.reveal();
       SeiNotionPopup.update(ctx, { preserveForm: true });
       if (!options.forceFetch) return;
     } else {
       state.loading = true;
       state.busyLabel = "Carregando dados do Notion…";
-      SeiNotionPopup.open(popupCtx({ ...info, uiMode }));
+      SeiNotionPopup.open(
+        popupCtx({ ...info, processNumber: nup, pageId, internal, uiMode })
+      );
     }
     if (uiMode === "panel") scheduleSeiContextRefresh();
     if (options.skipFetch) return;
     if (SeiNotionPopup.isOpen()) {
       SeiNotionPopup.setBusy(true, "Carregando dados do Notion…");
     }
-    await query([nup], { merge: true, keepBusy: true });
-    if (await abandonIfClosed(nup)) return;
-    const page = pageFor(nup);
+    if (nup) {
+      await query([nup], { merge: true, keepBusy: true });
+    } else {
+      await query([], { merge: true, keepBusy: true });
+      if (pageId) {
+        try {
+          const res = await send("SEI_NOTION_GET_PAGE", { pageId });
+          if (res && res.page) mergePage(res.page);
+        } catch (err) {
+          state.error = err.message || String(err);
+        }
+      }
+    }
+    if (await abandonIfClosed(incoming)) return;
+    const page = pageFor(nup, pageId);
     if (page && page.pageId) {
       if (uiMode !== "panel") await tryLock(page);
-      if (await abandonIfClosed(nup)) return;
+      if (await abandonIfClosed(incoming)) return;
       if (SeiNotionPopup.isOpen()) {
         SeiNotionPopup.setBusy(true, "Carregando atividades…");
       }
@@ -607,7 +759,7 @@
         loadChecklist(page.pageId),
         loadActivities(page.pageId)
       ]);
-      if (await abandonIfClosed(nup)) return;
+      if (await abandonIfClosed(incoming)) return;
     } else {
       state.checklist = [];
       state.activities = [];
@@ -1081,15 +1233,18 @@
     }
   }
 
-  function popupIsThis(nup) {
+  function popupIsThis(ref) {
     try {
-      return !!(
-        SeiNotionPopup &&
-        SeiNotionPopup.isOpen &&
-        SeiNotionPopup.isOpen() &&
-        SeiNotionPopup.processNumber &&
-        sameNup(SeiNotionPopup.processNumber(), nup)
-      );
+      if (
+        !SeiNotionPopup ||
+        !SeiNotionPopup.isOpen ||
+        !SeiNotionPopup.isOpen()
+      ) {
+        return false;
+      }
+      const incoming =
+        typeof ref === "string" ? { processNumber: ref } : ref || {};
+      return refKey(openPopupRef()) === refKey(incoming);
     } catch (_) {
       return false;
     }
@@ -1097,7 +1252,8 @@
 
   async function abandonIfClosed(nup) {
     if (popupIsThis(nup)) return false;
-    const page = nup ? pageFor(nup) : null;
+    const ref = typeof nup === "string" ? { processNumber: nup } : nup || {};
+    const page = pageFor(ref.processNumber, ref.pageId);
     if (page && page.pageId && state.heldPageId === page.pageId) {
       await releaseHeld();
     }
@@ -1190,11 +1346,13 @@
       (SeiNotionPopup.processNumber && SeiNotionPopup.processNumber()) ||
       state.seiContext.processNumber ||
       "";
-    if (!nup) return;
+    const pageId = popupPageId();
+    if (!nup && !pageId) return;
     try {
       await chrome.storage.local.set({
         seiNotion_workbench: {
           nup,
+          pageId,
           seiContext: { ...state.seiContext },
           ts: Date.now()
         }
@@ -1203,7 +1361,10 @@
       /* ignore */
     }
     try {
-      const res = await send("SEI_NOTION_OPEN_WORKBENCH", { processNumber: nup });
+      const res = await send("SEI_NOTION_OPEN_WORKBENCH", {
+        processNumber: nup,
+        pageId
+      });
       if (!res || !res.ok) {
         state.error = (res && res.error) || "Não foi possível abrir a aba.";
         refreshPopup({ preserveForm: true });
@@ -1218,32 +1379,50 @@
     await loadEditor();
     const params = new URLSearchParams(location.search || "");
     const nup = String(params.get("nup") || "").trim();
+    const pageId = String(params.get("pageId") || "").trim();
     try {
       const data = await chrome.storage.local.get("seiNotion_workbench");
       const stored = data && data.seiNotion_workbench;
-      if (stored && stored.seiContext && (!nup || sameNup(stored.nup, nup))) {
+      if (
+        stored &&
+        stored.seiContext &&
+        ((!nup && !pageId) ||
+          (nup && sameNup(stored.nup, nup)) ||
+          (pageId && stored.pageId === pageId))
+      ) {
         state.seiContext = { ...state.seiContext, ...stored.seiContext };
       }
     } catch (_) {
       /* ignore */
     }
-    document.title = nup ? "SEI Notion — " + nup : "SEI Notion";
-    if (!nup) {
+    document.title = nup
+      ? "SEI Notion — " + nup
+      : "SEI Notion";
+    if (!nup && !pageId) {
       document.body.innerHTML =
         '<p style="font-family:Segoe UI,sans-serif;padding:24px;color:#64748b;">Abra um processo no SEI e clique em <strong>Abrir em nova aba</strong>.</p>';
       return;
     }
     state.loading = true;
     state.busyLabel = "Carregando dados do Notion…";
+    const internal = !nup;
     SeiNotionPopup.open(
       popupCtx({
         processNumber: nup,
+        pageId,
+        internal,
         uiMode: "page"
       })
     );
     SeiNotionPopup.setBusy(true, "Carregando dados do Notion…");
-    await query([nup], { keepBusy: true });
-    const page = pageFor(nup);
+    if (nup) {
+      await query([nup], { keepBusy: true });
+    } else {
+      await query([], { keepBusy: true });
+      const res = await send("SEI_NOTION_GET_PAGE", { pageId });
+      if (res && res.page) mergePage(res.page);
+    }
+    const page = pageFor(nup, pageId);
     if (page && page.pageId) {
       SeiNotionPopup.setBusy(true, "Carregando atividades…");
       await Promise.all([
@@ -1261,6 +1440,65 @@
     return false;
   }
 
+  async function fetchInternal() {
+    const res = await send("SEI_NOTION_QUERY_INTERNAL", { light: true });
+    if (!res || !res.ok) {
+      throw new Error((res && res.error) || "Falha ao listar processos do Notion.");
+    }
+    state.statusOptions = res.statusOptions || state.statusOptions;
+    state.labelOptions = res.labelOptions || state.labelOptions;
+    state.mapping = res.mapping || state.mapping;
+    state.extraFields = res.extraFields || state.extraFields;
+    if (Array.isArray(res.templates)) state.templates = res.templates;
+    (res.pages || []).forEach(mergePage);
+    return {
+      processes: res.pages || [],
+      truncated: !!res.truncated,
+      mapping: res.mapping || state.mapping
+    };
+  }
+
+  function openInternal(item) {
+    if (item) mergePage(item);
+    return openPopup({
+      processNumber: "",
+      pageId: item && item.pageId,
+      name: (item && item.title) || "",
+      page: item || null,
+      internal: true
+    });
+  }
+
+  function openFromList(item) {
+    if (!item) return;
+    const Schema = globalThis.SeiNotionSchema;
+    const internal =
+      Schema && Schema.isInternalProcess
+        ? Schema.isInternalProcess(item.processNumber)
+        : !item.processNumber;
+    if (internal) return openInternal(item);
+    mergePage(item);
+    return openPopup({
+      processNumber: item.processNumber,
+      pageId: item.pageId,
+      name: item.title || "",
+      page: item
+    });
+  }
+
+  function createInternal() {
+    if (globalThis.SeiNotionUnlinkedList && SeiNotionUnlinkedList.select) {
+      SeiNotionUnlinkedList.select(null);
+    }
+    return openPopup({
+      processNumber: "",
+      pageId: "",
+      name: "",
+      page: null,
+      internal: true
+    });
+  }
+
   function paint() {
     if (IS_WORKBENCH) return;
     const s = SeiNotionDom.superficie(document);
@@ -1269,6 +1507,16 @@
       SeiNotionProcessList.paint(document, h);
     } else if (s.kind === "processo" && s.processNumber && !isTreeParent()) {
       SeiNotionProcessView.paint(document, s.processNumber, h);
+    }
+    if (globalThis.SeiNotionUnlinkedList && !isTreeParent() && !isVizFrame()) {
+      SeiNotionUnlinkedList.paint(document, {
+        notionReady: state.notionReady,
+        surfaceKind: s.kind,
+        mapping: state.mapping,
+        fetchProcesses: fetchInternal,
+        onOpen: openFromList,
+        onCreate: createInternal
+      });
     }
   }
 
@@ -1306,7 +1554,7 @@
   }
 
   async function fillPanelExtras(nup) {
-    const page = pageFor(nup);
+    const page = pageFor(nup, popupPageId());
     if (page && page.pageId) {
       await Promise.all([
         loadChecklist(page.pageId),

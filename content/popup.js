@@ -990,6 +990,7 @@
       min-width: 0;
       flex-shrink: 0;
     }
+    .sn-info-row.is-single { grid-template-columns: 1fr; }
     .sn-info-row > .sn-fold { min-width: 0; }
     .sn-root.is-panel .sn-body {
       flex: 1 1 auto;
@@ -1919,8 +1920,18 @@
       (ctx.seiLabels || []).forEach((n) => selectedLabels.add(n));
     }
 
-    let liveName = String(ctx.name || "").trim();
-    if (liveName === String(ctx.processNumber || "").trim()) {
+    const Schema = globalThis.SeiNotionSchema;
+    const internal = !!(
+      ctx.internal ||
+      (Schema &&
+        Schema.isInternalProcess &&
+        Schema.isInternalProcess(ctx.processNumber))
+    );
+    let liveName = String((draft && draft.name) || ctx.name || "").trim();
+    if (
+      !internal &&
+      liveName === String(ctx.processNumber || "").trim()
+    ) {
       liveName = "";
     }
     const titleVal = pickLive(
@@ -1972,10 +1983,15 @@
           )
           .join("");
 
-    const nupField = `<label class="${seiFieldClass("processNumber")}"><span>${esc((mapping && mapping.processNumber) || "Número SEI")}</span>
+    const nupField = internal
+      ? ""
+      : `<label class="${seiFieldClass("processNumber")}"><span>${esc((mapping && mapping.processNumber) || "Número SEI")}</span>
           <input id="sn-nupfield" type="text" title="${esc(ctx.processNumber || "")}" value="${esc(ctx.processNumber || "")}" readonly disabled /></label>`;
-    const titleLabel = mapping.title || "Especificação";
-    const titleField = mappingHas(mapping, "title")
+    const titleLabel = mapping.title || (internal ? "Título" : "Especificação");
+    const titleField = internal
+      ? `<label class="sn-field"><span>${esc(titleLabel)}</span>
+          <input id="sn-title" type="text" title="${esc(titleVal)}" value="${esc(titleVal)}" ${busy ? "disabled" : ""} autocomplete="off" /></label>`
+      : mappingHas(mapping, "title")
       ? `<label class="${seiFieldClass("title")}"><span>${esc(titleLabel)}</span>
           <input id="sn-title" type="text" title="${esc(titleVal)}" value="${esc(titleVal)}" readonly disabled /></label>`
       : "";
@@ -2071,7 +2087,6 @@
       seiUrl: urlField,
       notes: notesField
     };
-    const Schema = globalThis.SeiNotionSchema;
     const ordered = Schema && Schema.popupFields ? Schema.popupFields(mapping) : [];
     const seiByRole = {};
     const otherParts = [];
@@ -2091,7 +2106,7 @@
         takeField(item.kind, item.role, item.name, html);
       });
     } else {
-      takeField("role", "processNumber", null, nupField);
+      if (!internal) takeField("role", "processNumber", null, nupField);
       takeField("role", "title", null, titleField);
       takeField("role", "processType", null, processTypeField);
       takeField("role", "status", null, statusField);
@@ -2105,6 +2120,9 @@
         if (!takenExtra.has(n)) takeField("extra", null, n, extraByName[n]);
       });
     }
+    if (internal && titleField && otherParts.indexOf(titleField) < 0) {
+      otherParts.unshift(titleField);
+    }
     const seiOrdered = SEI_PANEL_ORDER.map((r) => seiByRole[r])
       .filter(Boolean)
       .concat(
@@ -2112,7 +2130,9 @@
           .filter((r) => SEI_PANEL_ORDER.indexOf(r) < 0)
           .map((r) => seiByRole[r])
       );
-    const seiBlock = `
+    const seiBlock = internal
+      ? ""
+      : `
       <div class="sn-fold is-open sn-sei-fixed" id="sn-sei-wrap">
         <div class="sn-fold-head-fixed">
           <span class="sn-fold-label">Informações do SEI</span>
@@ -2137,7 +2157,7 @@
       </div>
     `;
     const fieldsHtml =
-      `<div class="sn-info-row">${seiBlock}${otherBlock}</div>` +
+      `<div class="sn-info-row${internal ? " is-single" : ""}">${seiBlock}${otherBlock}</div>` +
       `<div class="sn-side sn-side-kanban">${kanban}</div>`;
 
     let action = "";
@@ -2174,8 +2194,22 @@
           <div class="sn-head">
             <div class="sn-logo">N</div>
             <div class="sn-head-text">
-              <h2>${locked ? "Em edição por outra pessoa" : page ? "Página no Notion" : "Sem página no Notion"}</h2>
-              <div class="sn-nup">${esc(ctx.processNumber || "")}</div>
+              <h2>${
+                locked
+                  ? "Em edição por outra pessoa"
+                  : page
+                    ? "Página no Notion"
+                    : internal
+                      ? "Novo processo interno"
+                      : "Sem página no Notion"
+              }</h2>
+              <div class="sn-nup">${esc(
+                internal
+                  ? page
+                    ? titleVal || "Sem Número SEI"
+                    : "Sem Número SEI"
+                  : ctx.processNumber || ""
+              )}</div>
             </div>
             ${popoutBtn}
             ${panel ? `<button type="button" class="sn-toggle" id="sn-toggle" aria-label="${collapsed ? "Expandir painel" : "Recolher painel"}">${collapsed ? "▴" : "▾"}</button>` : ""}
@@ -2186,7 +2220,11 @@
               ${ctx.error ? `<p class="sn-err">${esc(ctx.error)}</p>` : ""}
               ${locked ? `<p class="sn-lock">${esc(ctx.lockName || "Outra pessoa")} está editando agora. Você pode ver os dados, mas não salvar até a pessoa sair da edição (ou o bloqueio expirar em ~1 minuto sem atividade).</p>` : ""}
               ${ctx.lockMine && !locked ? `<p class="sn-mine">Você está editando. Enquanto estiver com o processo em edição, as outras pessoas não conseguem salvar.</p>` : ""}
-              ${!page && !ctx.error && !locked ? `<p class="sn-msg">Este processo ainda não está no Notion. Preencha as informações do Notion e crie o card.${docked ? "" : " Os próximos cliques abrem o mesmo card para editar."}</p>` : ""}
+              ${!page && !ctx.error && !locked ? `<p class="sn-msg">${
+                internal
+                  ? "Crie um processo no Notion sem ligar a um número do SEI. Depois você adiciona as atividades no quadro."
+                  : "Este processo ainda não está no Notion. Preencha as informações do Notion e crie o card." + (docked ? "" : " Os próximos cliques abrem o mesmo card para editar.")
+              }</p>` : ""}
               ${fieldsHtml}
               <div class="sn-overlay" id="sn-loading" ${busy ? "" : "hidden"}>
                 <div class="sn-overlay-card">
@@ -3746,6 +3784,7 @@
     const page = ctx && ctx.page;
     const out = {
       processNumber: (ctx && ctx.processNumber) || (page && page.processNumber) || "",
+      pageId: (ctx && ctx.pageId) || (page && page.pageId) || "",
       seiUrl: pickSeiUrl(page, ctx)
     };
     if (titleEl) out.name = titleEl.value.trim();
@@ -3898,6 +3937,11 @@
     return current && current.ctx ? current.ctx.processNumber : null;
   }
 
+  function pageId() {
+    if (!current || !current.ctx) return "";
+    return current.ctx.pageId || (current.ctx.page && current.ctx.page.pageId) || "";
+  }
+
   function hasLiveHost() {
     const bag = getBag();
     return !!(bag && bag.host && bag.host.isConnected);
@@ -3917,6 +3961,7 @@
     update,
     isOpen,
     processNumber,
+    pageId,
     readForm,
     setBusy,
     hasLiveHost,

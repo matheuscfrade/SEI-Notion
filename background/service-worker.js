@@ -15,6 +15,7 @@ const CONTENT_JS = [
   "content/popup.js",
   "content/process-list.js",
   "content/process-view.js",
+  "content/unlinked-list.js",
   "content/content.js"
 ];
 const CONTENT_CSS = ["content/content.css"];
@@ -335,11 +336,29 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   forgetWorkbenchTab(tabId);
 });
 
+function workbenchUrl(nup, pageId) {
+  const base = chrome.runtime.getURL("workbench/workbench.html");
+  if (nup) return base + "?nup=" + encodeURIComponent(nup);
+  if (pageId) return base + "?pageId=" + encodeURIComponent(pageId);
+  return base;
+}
+
+function workbenchKey(nup, pageId) {
+  const number = String(nup || "").trim();
+  if (number) return number;
+  const id = String(pageId || "").trim();
+  return id ? "id:" + id : "";
+}
+
 async function focusWorkbenchTab(tab, url, key) {
   const update = { active: true };
   try {
     const current = new URL(tab.url || "");
-    if (current.searchParams.get("nup") !== key) update.url = url;
+    const sameNup = current.searchParams.get("nup") === key;
+    const sameId =
+      key.indexOf("id:") === 0 &&
+      current.searchParams.get("pageId") === key.slice(3);
+    if (!sameNup && !sameId) update.url = url;
   } catch (_) {
     update.url = url;
   }
@@ -352,12 +371,9 @@ async function focusWorkbenchTab(tab, url, key) {
   return { ok: true, reused: true, tabId: tab.id };
 }
 
-async function openWorkbenchTab(nup) {
-  const key = String(nup || "").trim();
-  const url =
-    chrome.runtime.getURL("workbench/workbench.html") +
-    "?nup=" +
-    encodeURIComponent(key);
+async function openWorkbenchTab(nup, pageId) {
+  const key = workbenchKey(nup, pageId);
+  const url = workbenchUrl(nup, pageId);
   await loadWorkbenchTabs();
   const existingId = workbenchTabs.get(key);
   if (existingId) {
@@ -388,11 +404,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (type === "SEI_NOTION_OPEN_WORKBENCH") {
     const nup = String(message.processNumber || "").trim();
-    if (!nup) {
+    const pageId = String(message.pageId || "").trim();
+    if (!nup && !pageId) {
       sendResponse({ ok: false, error: "Processo não informado." });
       return true;
     }
-    openWorkbenchTab(nup)
+    openWorkbenchTab(nup, pageId)
       .then((res) => sendResponse(res))
       .catch((err) => sendResponse(fail(err)));
     return true;
@@ -525,6 +542,47 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         message.processDataSourceId || settings.dataSourceId
       );
       sendResponse({ ok: true, dataSource: inspected });
+    })().catch((err) => sendResponse(fail(err)));
+    return true;
+  }
+
+  if (type === "SEI_NOTION_QUERY_INTERNAL") {
+    (async () => {
+      const { token, settings } = await requireNotion();
+      if (!Storage.isReady(settings, token)) {
+        throw new Error(
+          "Configure o banco do Notion nas opções (token + database + Número SEI)."
+        );
+      }
+      const result = await Api.queryAllProcessPages(
+        token,
+        settings,
+        { light: !!message.light }
+      );
+      sendResponse({
+        ok: true,
+        pages: result.pages,
+        truncated: !!result.truncated,
+        statusOptions: result.statusOptions,
+        labelOptions: result.labelOptions,
+        mapping: settings.mapping,
+        extraFields: result.extraFields || [],
+        templates: result.templates || []
+      });
+    })().catch((err) => sendResponse(fail(err)));
+    return true;
+  }
+
+  if (type === "SEI_NOTION_GET_PAGE") {
+    (async () => {
+      const { token, settings } = await requireNotion();
+      if (!message.pageId) throw new Error("Página ausente.");
+      const page = await Api.summarizePageById(
+        token,
+        settings,
+        message.pageId
+      );
+      sendResponse({ ok: true, page });
     })().catch((err) => sendResponse(fail(err)));
     return true;
   }

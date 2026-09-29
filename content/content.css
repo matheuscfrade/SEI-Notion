@@ -51,6 +51,20 @@
   border-color: #172554;
 }
 
+.sei-notion-list-launch {
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  margin: 0 2px 0 8px;
+  top: 0;
+  vertical-align: middle;
+}
+.sei-notion-list-launch-cell {
+  padding: 0 4px;
+  vertical-align: middle;
+  border: 0;
+}
+
 .sei-notion-trigger.is-linked.status-default { background: #64748b; border-color: #64748b; }
 .sei-notion-trigger.is-linked.status-default:hover:not(.is-busy) { background: #475569; border-color: #475569; }
 

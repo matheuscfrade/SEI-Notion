@@ -69,6 +69,18 @@ assertEqual(
 );
 assertEqual(
   S.popupCloseIntent({
+    page: { pageId: "int-1", processNumber: "" },
+    form: { name: "Rotina da equipe", pageId: "int-1" },
+    lockedByOther: false,
+    heldPageId: "int-1",
+    lockSession: 1,
+    closeSession: 1
+  }).persist,
+  true,
+  "fechar processo interno salva pela página, sem NUP"
+);
+assertEqual(
+  S.popupCloseIntent({
     page,
     form,
     lockedByOther: false,

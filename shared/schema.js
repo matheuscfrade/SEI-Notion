@@ -334,6 +334,217 @@
     return fixedIds.concat(savedExtras);
   }
 
+  const EXTERNAL_PROCESS_TYPE = "Externo ao SEI";
+
+  function listColumns(mapping) {
+    const fields = popupFields(mapping) || [];
+    const skip = new Set(["processNumber"]);
+    const forced = [
+      { role: "title", label: "Título" },
+      { role: "status", label: "Status" },
+      { role: "processType", label: "Tipo de processo" }
+    ];
+    if (mapping && mapping.due) {
+      forced.push({ role: "due", label: "Prazo" });
+    }
+    const byRole = {};
+    fields.forEach((f) => {
+      if (f && f.role) byRole[f.role] = f;
+    });
+    const cols = [];
+    const seen = new Set();
+    forced.forEach((c) => {
+      const existing = byRole[c.role];
+      cols.push({
+        id: existing ? existing.id : "role:" + c.role,
+        kind: "role",
+        role: c.role,
+        name: existing ? existing.name : (mapping && mapping[c.role]) || "",
+        label: c.label
+      });
+      seen.add(c.role);
+    });
+    fields.forEach((f) => {
+      if (!f) return;
+      if (f.role && (skip.has(f.role) || seen.has(f.role))) return;
+      const key = f.role || "extra:" + f.name;
+      if (seen.has(key)) return;
+      seen.add(key);
+      cols.push({
+        id: f.id,
+        kind: f.kind,
+        role: f.role,
+        name: f.name,
+        label: f.label
+      });
+    });
+    return cols;
+  }
+
+  function formatIsoDay(value) {
+    if (!value) return "";
+    const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return String(value);
+    return m[3] + "/" + m[2] + "/" + m[1];
+  }
+
+  function formatCellValue(value) {
+    if (value == null || value === "") return "";
+    if (typeof value === "boolean") return value ? "Sim" : "Não";
+    if (Array.isArray(value)) {
+      return value
+        .map((n) => (typeof n === "string" ? n : n && n.name))
+        .filter(Boolean)
+        .join(", ");
+    }
+    return formatIsoDay(value);
+  }
+
+  function formatListCell(page, col) {
+    if (!page || !col) return "";
+    const role = col.role;
+    if (role === "title") return String(page.title || "");
+    if (role === "status") return (page.status && page.status.name) || "";
+    if (role === "processType") {
+      if (isInternalProcess(page.processNumber)) return EXTERNAL_PROCESS_TYPE;
+      return String(page.processType || "");
+    }
+    if (role === "labels") return formatCellValue(page.labels);
+    if (role === "assignee") return String(page.assignee || "");
+    if (role === "due") return formatIsoDay(page.due);
+    if (role === "seiUrl") return String(page.seiUrl || "");
+    if (role === "notes") return String(page.notes || "");
+    if (role === "processNumber") return String(page.processNumber || "");
+    if (col.kind === "extra" && col.name) {
+      return formatCellValue(page.extra && page.extra[col.name]);
+    }
+    return "";
+  }
+
+  function listColumnKey(col) {
+    if (!col) return "";
+    if (col.id) return col.id;
+    if (col.role) return "role:" + col.role;
+    if (col.name) return "extra:" + col.name;
+    return "";
+  }
+
+  function listFilterKind(col) {
+    if (!col) return "text";
+    if (col.role === "status" || col.role === "processType") return "select";
+    if (col.role === "due") return "date";
+    return "text";
+  }
+
+  function maskDateBr(value) {
+    const digits = String(value || "").replace(/\D/g, "").slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return digits.slice(0, 2) + "/" + digits.slice(2);
+    return (
+      digits.slice(0, 2) + "/" + digits.slice(2, 4) + "/" + digits.slice(4)
+    );
+  }
+
+  function queryColumns(opts) {
+    if (Array.isArray(opts.columns) && opts.columns.length) return opts.columns;
+    return Object.keys(opts.fields || {}).map((id) => {
+      if (id.indexOf("role:") === 0) {
+        return { id, kind: "role", role: id.slice(5) };
+      }
+      if (id.indexOf("extra:") === 0) {
+        return { id, kind: "extra", name: id.slice(6) };
+      }
+      return { id, role: id };
+    });
+  }
+
+  function pageMatchesField(page, col, value) {
+    const raw = String(value || "").trim();
+    if (!raw) return true;
+    const kind = listFilterKind(col);
+    if (kind === "select") {
+      return formatListCell(page, col) === raw;
+    }
+    if (kind === "date") {
+      const iso = parseDateBr(raw) || dueDay(raw);
+      if (!iso) return true;
+      return dueDay(page.due) === iso;
+    }
+    return norm(formatListCell(page, col)).indexOf(norm(raw)) !== -1;
+  }
+
+  function listFilterOptions(pages, col) {
+    const values = [];
+    const seen = new Set();
+    (Array.isArray(pages) ? pages : []).forEach((p) => {
+      const v = formatListCell(p, col);
+      if (!v || seen.has(v)) return;
+      seen.add(v);
+      values.push(v);
+    });
+    values.sort((a, b) => a.localeCompare(b, "pt"));
+    return values;
+  }
+
+  function dueDay(value) {
+    const m = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[0] : "";
+  }
+
+  function pageMatchesText(page, text, columns) {
+    const q = norm(text);
+    if (!q) return true;
+    const skip = new Set(["status", "processType", "due"]);
+    const cols = Array.isArray(columns) ? columns : [];
+    for (let i = 0; i < cols.length; i += 1) {
+      const col = cols[i];
+      if (col && col.role && skip.has(col.role)) continue;
+      if (norm(formatListCell(page, col)).indexOf(q) !== -1) return true;
+    }
+    return false;
+  }
+
+  function filterProcesses(pages, query) {
+    const list = Array.isArray(pages) ? pages : [];
+    const opts =
+      typeof query === "string" || query == null
+        ? { kind: query || "all" }
+        : query || {};
+    const kind = opts.kind || "all";
+    let out = list.filter(Boolean);
+    if (kind === "sei") {
+      out = out.filter((p) => !isInternalProcess(p.processNumber));
+    } else if (kind === "external") {
+      out = out.filter((p) => isInternalProcess(p.processNumber));
+    }
+    if (opts.status) {
+      out = out.filter(
+        (p) => formatListCell(p, { role: "status" }) === opts.status
+      );
+    }
+    if (opts.processType) {
+      out = out.filter(
+        (p) => formatListCell(p, { role: "processType" }) === opts.processType
+      );
+    }
+    if (opts.due) {
+      const iso = parseDateBr(opts.due) || dueDay(opts.due);
+      if (iso) out = out.filter((p) => dueDay(p.due) === iso);
+    }
+    if (opts.fields) {
+      const cols = queryColumns(opts);
+      out = out.filter((p) =>
+        cols.every((col) =>
+          pageMatchesField(p, col, opts.fields[listColumnKey(col)])
+        )
+      );
+    }
+    if (opts.text) {
+      out = out.filter((p) => pageMatchesText(p, opts.text, opts.columns));
+    }
+    return out;
+  }
+
   function popupFields(mapping) {
     const hidden = new Set(Array.isArray(mapping && mapping.hiddenRoles) ? mapping.hiddenRoles : []);
     const labels = {
@@ -861,16 +1072,16 @@
       );
     }
 
-    if (
-      mapping.processNumber &&
-      mapping.processNumber !== titleName &&
-      data.processNumber
-    ) {
+    if (mapping.processNumber && mapping.processNumber !== titleName) {
       const nupType =
         types.processNumber ||
         (types._titleColumn === mapping.processNumber ? "title" : "") ||
         "rich_text";
-      put(mapping.processNumber, nupType, data.processNumber, nupType);
+      if (data.processNumber) {
+        put(mapping.processNumber, nupType, data.processNumber, nupType);
+      } else if ("processNumber" in data) {
+        put(mapping.processNumber, nupType, "", nupType);
+      }
     }
 
     if (mapping.notes && "description" in data && data.description !== undefined) {
@@ -957,6 +1168,45 @@
     return Object.keys(PREPARE_PROPERTIES).filter(
       (name) => !existing.has(norm(name))
     );
+  }
+
+  function processNumberEmptyFilter(mapping, types) {
+    if (!mapping || !mapping.processNumber) return null;
+    const type = (types && types.processNumber) || "rich_text";
+    const field =
+      type === "title" ? "title" : type === "url" ? "url" : "rich_text";
+    return {
+      property: mapping.processNumber,
+      [field]: { is_empty: true }
+    };
+  }
+
+  function isInternalProcess(processNumber) {
+    return !extractNup(processNumber);
+  }
+
+  function findPage(pages, ref) {
+    const list = Array.isArray(pages) ? pages : [];
+    if (!ref) return null;
+    const nup = String(ref.processNumber || "").trim();
+    if (nup) {
+      return list.find((p) => sameNup(p.processNumber, nup)) || null;
+    }
+    const pageId = String(ref.pageId || "").trim();
+    if (!pageId) return null;
+    return list.find((p) => p && p.pageId === pageId) || null;
+  }
+
+  function popupKey(ref) {
+    if (!ref) return "";
+    const nup = String(ref.processNumber || "").trim();
+    if (nup) return "nup:" + nup;
+    const pageId = String(
+      ref.pageId || (ref.page && ref.page.pageId) || ""
+    ).trim();
+    if (pageId) return "id:" + pageId;
+    if (ref.internal) return "internal-new";
+    return "";
   }
 
   function processNumberFilter(mapping, types, numbers) {
@@ -1264,6 +1514,14 @@
     defaultOrder,
     resolveOrder,
     popupFields,
+    listColumns,
+    formatListCell,
+    listColumnKey,
+    listFilterKind,
+    maskDateBr,
+    listFilterOptions,
+    filterProcesses,
+    EXTERNAL_PROCESS_TYPE,
     mergeMapping,
     listProperties,
     findProperty,
@@ -1287,6 +1545,10 @@
     mappingTypes,
     missingPrepared,
     processNumberFilter,
+    processNumberEmptyFilter,
+    isInternalProcess,
+    findPage,
+    popupKey,
     matchTemplate,
     LOCK_PROPERTY,
     LOCK_TTL_MS,
