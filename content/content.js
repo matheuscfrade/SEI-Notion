@@ -17,6 +17,7 @@
     labelOptions: [],
     mapping: {},
     extraFields: [],
+    activityExtraFields: [],
     notionReady: false,
     templates: [],
     checklist: [],
@@ -57,6 +58,12 @@
       return SeiNotionSchema.sameNup(a, b);
     }
     return a === b;
+  }
+
+  function nupOrEmpty(value) {
+    const Schema = globalThis.SeiNotionSchema;
+    if (Schema && Schema.extractNup) return Schema.extractNup(value) || "";
+    return "";
   }
 
   function popupPageId() {
@@ -240,6 +247,7 @@
       labelOptions: state.labelOptions,
       mapping: state.mapping,
       extraFields: state.extraFields,
+      activityExtraFields: state.activityExtraFields || [],
       templates: state.templates || [],
       checklist: state.checklist || [],
       activities: state.activities || [],
@@ -494,7 +502,10 @@
           pageId: page.pageId,
           patch: {
             ...form,
-            processNumber: (form && form.processNumber) || page.processNumber
+            processNumber:
+              nupOrEmpty(form && form.processNumber) ||
+              nupOrEmpty(page.processNumber) ||
+              ""
           }
         });
         if (!res?.ok) throw new Error(res?.error || "Falha ao atualizar.");
@@ -665,7 +676,10 @@
         pageId,
         patch: {
           ...patch,
-          processNumber: patch.processNumber || (prev && prev.processNumber)
+          processNumber:
+            nupOrEmpty(patch.processNumber) ||
+            nupOrEmpty(prev && prev.processNumber) ||
+            ""
         }
       });
       if (!res?.ok) throw new Error(res?.error || "Falha ao atualizar.");
@@ -776,6 +790,7 @@
       state.activities = [];
       state.activityStatusColumns = [];
       state.activityTemplates = [];
+      state.activityExtraFields = [];
       state.activitiesConfigured = false;
       return;
     }
@@ -785,6 +800,7 @@
         state.activities = res.activities || [];
         state.activityStatusColumns = res.statusColumns || [];
         state.activityTemplates = res.templates || [];
+        state.activityExtraFields = res.extraFields || [];
         state.activitiesConfigured = true;
       }
     } catch (_) {

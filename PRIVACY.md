@@ -1,6 +1,6 @@
 # Política de Privacidade — SEI Notion
 
-**Última atualização:** 9 de setembro de 2026 (v1.0.1)  
+**Última atualização:** 1 de outubro de 2026 (v1.0.4)  
 **Desenvolvedor:** Matheus Costa Frade  
 **Extensão:** SEI Notion (Chrome)  
 **Contato:** [issues no GitHub](https://github.com/matheuscfrade/SEI-Notion/issues)  

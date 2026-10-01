@@ -1050,14 +1050,18 @@
       if (payload) props[column] = payload;
     }
 
+    const nupText = extractNup(data.processNumber)
+      ? String(data.processNumber || "").trim()
+      : "";
+
     if (titleName && "name" in data) {
-      let titleText = data.name || data.processNumber || "";
+      let titleText = data.name || nupText || "";
       if (
         mapping.processNumber === titleName &&
-        data.processNumber &&
-        String(titleText).indexOf(data.processNumber) === -1
+        nupText &&
+        String(titleText).indexOf(nupText) === -1
       ) {
-        titleText = data.processNumber + (data.name ? " — " + data.name : "");
+        titleText = nupText + (data.name ? " — " + data.name : "");
       }
       const kind = types.title || "title";
       props[titleName] = textPayload(kind, titleText);
@@ -1068,7 +1072,7 @@
     } else if (types._titleColumn && "name" in data) {
       props[types._titleColumn] = textPayload(
         "title",
-        data.name || data.processNumber || ""
+        data.name || nupText || ""
       );
     }
 
@@ -1077,9 +1081,11 @@
         types.processNumber ||
         (types._titleColumn === mapping.processNumber ? "title" : "") ||
         "rich_text";
-      if (data.processNumber) {
-        put(mapping.processNumber, nupType, data.processNumber, nupType);
-      } else if ("processNumber" in data) {
+      const nupIsTitle =
+        nupType === "title" || mapping.processNumber === types._titleColumn;
+      if (nupText) {
+        put(mapping.processNumber, nupType, nupText, nupType);
+      } else if ("processNumber" in data && !nupIsTitle) {
         put(mapping.processNumber, nupType, "", nupType);
       }
     }
@@ -1288,6 +1294,74 @@
     { key: "due", label: "Prazo", required: false, types: ["date"] }
   ];
 
+  const ACTIVITIES_ROLE_KEYS = ACTIVITIES_ROLES.map((r) => r.key);
+
+  function mappedActivityNames(mapping) {
+    const names = [];
+    ACTIVITIES_ROLE_KEYS.forEach((key) => {
+      if (mapping && mapping[key]) names.push(mapping[key]);
+    });
+    return new Set(names);
+  }
+
+  function extraActivityNames(mapping) {
+    const used = mappedActivityNames(mapping);
+    const names = [];
+    function add(n) {
+      n = String(n || "").trim();
+      if (
+        !n ||
+        isLockProperty(n) ||
+        isOrderPropertyName(n) ||
+        used.has(n) ||
+        names.indexOf(n) !== -1
+      ) {
+        return;
+      }
+      names.push(n);
+    }
+    (Array.isArray(mapping && mapping.extra) ? mapping.extra : []).forEach(add);
+    return names;
+  }
+
+  function extraActivityCandidates(schema, mapping) {
+    const used = mappedActivityNames(mapping);
+    return listProperties(schema).filter((p) => {
+      if (!p || !p.name) return false;
+      if (used.has(p.name)) return false;
+      if (isLockProperty(p.name) || isOrderPropertyName(p.name)) return false;
+      if (p.type === "relation") return false;
+      if (EXTRA_TYPES.indexOf(p.type) === -1) return false;
+      return true;
+    });
+  }
+
+  function extraActivityFieldDefs(schema, mapping, users) {
+    const wanted = extraActivityNames(mapping);
+    return wanted
+      .map((name) => {
+        if (!name || isLockProperty(name) || isOrderPropertyName(name)) return null;
+        const p = findProperty(schema, name);
+        if (!p) {
+          return { name, type: "rich_text", options: [] };
+        }
+        if (p.type === "relation") return null;
+        let options = fieldOptions(p);
+        if (p.type === "people") {
+          options = (users || []).map((u) => ({
+            id: u.id,
+            name: u.name || u.id
+          }));
+        }
+        return {
+          name,
+          type: p.type || "rich_text",
+          options
+        };
+      })
+      .filter(Boolean);
+  }
+
   function findRelationProperty(schema, targetDatabaseId) {
     const props = listProperties(schema);
     const normTarget = targetDatabaseId
@@ -1347,7 +1421,9 @@
       status: statusProp || "",
       processRelation: relProp || "",
       assignee: assigneeProp || "",
-      due: dueProp || ""
+      due: dueProp || "",
+      extra: [],
+      order: []
     };
   }
 
@@ -1431,6 +1507,11 @@
 
     const sortIndex = readActivitySortIndex(props);
 
+    const extra = {};
+    extraActivityNames(map).forEach((name) => {
+      extra[name] = readExtraValue(readProp(page, name));
+    });
+
     return {
       activityId: page.id,
       url: page.url || "",
@@ -1440,6 +1521,7 @@
       processPageIds,
       assignee,
       due,
+      extra,
       createdTime: page.created_time || "",
       sortIndex,
       checklist: [],
@@ -1482,8 +1564,37 @@
     return null;
   }
 
-  function sortActivities(list) {
-    return (Array.isArray(list) ? list.slice() : []).sort((a, b) => {
+  function sortActivities(list, mode) {
+    const rows = Array.isArray(list) ? list.slice() : [];
+    const kind = String(mode || "import").toLowerCase();
+    if (kind === "title") {
+      return rows.sort((a, b) => {
+        const cmp = String((a && a.title) || "").localeCompare(
+          String((b && b.title) || ""),
+          "pt",
+          { sensitivity: "base" }
+        );
+        if (cmp) return cmp;
+        return String((a && a.activityId) || "").localeCompare(
+          String((b && b.activityId) || "")
+        );
+      });
+    }
+    if (kind === "due") {
+      return rows.sort((a, b) => {
+        const da = dueDay(a && a.due);
+        const db = dueDay(b && b.due);
+        if (da && db && da !== db) return da < db ? -1 : 1;
+        if (da && !db) return -1;
+        if (!da && db) return 1;
+        return String((a && a.title) || "").localeCompare(
+          String((b && b.title) || ""),
+          "pt",
+          { sensitivity: "base" }
+        );
+      });
+    }
+    return rows.sort((a, b) => {
       const ia = a && typeof a.sortIndex === "number" ? a.sortIndex : null;
       const ib = b && typeof b.sortIndex === "number" ? b.sortIndex : null;
       if (ia != null && ib != null && ia !== ib) return ia - ib;
@@ -1498,12 +1609,73 @@
     });
   }
 
+  function isActivityDone(act) {
+    const n = norm(act && act.statusName);
+    if (!n) return false;
+    return /conclu|finaliz|feito|encerr|done|complete/.test(n);
+  }
+
+  function todayIsoDay(now) {
+    if (typeof now === "string") {
+      const m = now.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (m) return m[1];
+    }
+    const d = now instanceof Date ? now : new Date();
+    if (Number.isNaN(d.getTime())) return "";
+    return (
+      d.getFullYear() +
+      "-" +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(d.getDate()).padStart(2, "0")
+    );
+  }
+
+  function isActivityOverdue(act, today) {
+    if (!act || isActivityDone(act)) return false;
+    const due = dueDay(act.due);
+    if (!due) return false;
+    const day = todayIsoDay(today) || todayIsoDay();
+    if (!day) return false;
+    return due < day;
+  }
+
+  function activityMatchesText(act, text) {
+    const q = norm(text);
+    if (!q) return true;
+    if (norm(act && act.title).indexOf(q) !== -1) return true;
+    if (norm(act && act.assignee).indexOf(q) !== -1) return true;
+    const extra = act && act.extra && typeof act.extra === "object" ? act.extra : {};
+    const keys = Object.keys(extra);
+    for (let i = 0; i < keys.length; i += 1) {
+      if (norm(keys[i]).indexOf(q) !== -1) return true;
+      if (norm(formatCellValue(extra[keys[i]])).indexOf(q) !== -1) return true;
+    }
+    return false;
+  }
+
+  function filterActivities(list, query) {
+    const opts = query && typeof query === "object" ? query : {};
+    let out = Array.isArray(list) ? list.filter(Boolean) : [];
+    if (opts.overdue) {
+      out = out.filter((a) => isActivityOverdue(a, opts.today));
+    }
+    if (opts.text && String(opts.text).trim()) {
+      out = out.filter((a) => activityMatchesText(a, opts.text));
+    }
+    return out;
+  }
+
   root.SeiNotionSchema = {
     COMPAT,
     STANDARD_ROLES,
     FIXED_ORDER_ROLES,
     PREPARE_PROPERTIES,
     ACTIVITIES_ROLES,
+    ACTIVITIES_ROLE_KEYS,
+    extraActivityNames,
+    extraActivityCandidates,
+    extraActivityFieldDefs,
     EXTRA_TYPES,
     ROLE_KEYS,
     SEI_READONLY_ROLES,
@@ -1533,6 +1705,9 @@
     extractStatusColumns,
     summarizeActivity,
     sortActivities,
+    isActivityDone,
+    isActivityOverdue,
+    filterActivities,
     findActivityOrderProperty,
     readActivitySortIndex,
     propertyType,

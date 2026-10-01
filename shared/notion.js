@@ -5,6 +5,8 @@
 (function (root) {
   const API = "https://api.notion.com/v1";
   const VERSION = "2022-06-28";
+  const TEMPLATE_API_VERSION = "2025-09-03";
+  const TEMPLATE_API_VERSION_FALLBACK = "2026-03-11";
   const Schema = () => root.SeiNotionSchema;
 
   const MAX_INFLIGHT = 3;
@@ -69,7 +71,7 @@
           method,
           headers: {
             Authorization: "Bearer " + token,
-            "Notion-Version": VERSION,
+            "Notion-Version": (opts && opts.notionVersion) || VERSION,
             "Content-Type": "application/json"
           },
           body: body ? JSON.stringify(body) : undefined
@@ -626,50 +628,144 @@
     return cleanA === cleanB;
   }
 
-  async function listTemplates(token, dataSourceId, mapping) {
-    const templates = [];
-    if (!dataSourceId) return templates;
-    const cached = cacheGet(templateCache, dataSourceId, TPL_TTL);
-    if (cached) return cached;
+  function pushTemplate(templates, id, name) {
+    const title = String(name || "").trim();
+    if (!id || !title) return;
+    if (
+      /^(empty|vazio|untitled|sem título|sem titulo|new page|nova página|nova pagina)$/i.test(
+        title
+      )
+    ) {
+      return;
+    }
+    if (templates.some((t) => sameId(t.id, id))) return;
+    templates.push({ id, name: title });
+  }
 
-    function addTemplate(p) {
-      if (!p || p.archived || p.in_trash) return;
-      const title = extractPageTitle(p);
-      if (!title) return;
-      // Ignore Notion's built-in default empty template
-      if (/^(empty|vazio)$/i.test(title.trim())) return;
-      if (!isTemplateCandidate(p, title, mapping)) return;
-      if (!templates.some((t) => sameId(t.id, p.id))) {
-        templates.push({
-          id: p.id,
-          name: title
+  async function notionFetchTemplatesApi(token, path, opts) {
+    try {
+      return await notionFetch(token, path, {
+        ...(opts || {}),
+        notionVersion: TEMPLATE_API_VERSION
+      });
+    } catch (err) {
+      if (err && err.status === 400) {
+        return await notionFetch(token, path, {
+          ...(opts || {}),
+          notionVersion: TEMPLATE_API_VERSION_FALLBACK
         });
       }
+      throw err;
     }
+  }
 
+  async function resolveDataSourceIdForTemplates(token, id) {
     try {
-      const s = await notionFetch(token, "/search", {
+      const db = await notionFetchTemplatesApi(token, "/databases/" + id);
+      const sources = db && Array.isArray(db.data_sources) ? db.data_sources : [];
+      if (sources[0] && sources[0].id) return sources[0].id;
+    } catch (_) {
+      /* o id já pode ser de data source */
+    }
+    return id;
+  }
+
+  async function listTemplatesFromDataSource(token, dataSourceId) {
+    const templates = [];
+    if (!dataSourceId) return templates;
+    const dsId = await resolveDataSourceIdForTemplates(token, dataSourceId);
+    let cursor = "";
+    const ids = dsId === dataSourceId ? [dsId] : [dsId, dataSourceId];
+    let lastErr = null;
+    for (let i = 0; i < ids.length; i += 1) {
+      try {
+        do {
+          let path =
+            "/data_sources/" +
+            encodeURIComponent(ids[i]) +
+            "/templates?page_size=100";
+          if (cursor) path += "&start_cursor=" + encodeURIComponent(cursor);
+          const page = await notionFetchTemplatesApi(token, path, {
+            method: "GET"
+          });
+          (page.templates || []).forEach((t) => {
+            if (t) pushTemplate(templates, t.id, t.name);
+          });
+          cursor = page.has_more ? page.next_cursor || "" : "";
+        } while (cursor);
+        return templates;
+      } catch (err) {
+        lastErr = err;
+        cursor = "";
+      }
+    }
+    if (lastErr) throw lastErr;
+    return templates;
+  }
+
+  async function listTemplatesFromSearch(token, dataSourceId, mapping) {
+    const templates = [];
+    if (!dataSourceId) return templates;
+    let cursor = undefined;
+    let pages = 0;
+    do {
+      const payload = {
+        filter: { property: "object", value: "page" },
+        page_size: 100
+      };
+      if (cursor) payload.start_cursor = cursor;
+      const page = await notionFetch(token, "/search", {
         method: "POST",
-        body: {
-          filter: { property: "object", value: "page" },
-          page_size: 100
-        }
+        body: payload
       });
-      (s.results || []).forEach((p) => {
+      (page.results || []).forEach((p) => {
         if (!p || !p.parent) return;
         const parentDbId =
           p.parent.database_id ||
           p.parent.data_source_id ||
           (p.parent.type === "database_id" ? p.parent.database_id : "") ||
           "";
-        if (sameId(parentDbId, dataSourceId)) {
-          addTemplate(p);
-        }
+        if (!sameId(parentDbId, dataSourceId)) return;
+        if (p.archived || p.in_trash) return;
+        const title = extractPageTitle(p);
+        if (!isTemplateCandidate(p, title, mapping)) return;
+        pushTemplate(templates, p.id, title);
       });
+      cursor = page.has_more ? page.next_cursor : null;
+      pages += 1;
+    } while (cursor && pages < 8);
+    return templates;
+  }
+
+  async function listTemplates(token, dataSourceId, mapping) {
+    const templates = [];
+    if (!dataSourceId) return templates;
+    const cached = cacheGet(templateCache, dataSourceId, TPL_TTL);
+    if (cached) return cached;
+
+    try {
+      const fromApi = await listTemplatesFromDataSource(token, dataSourceId);
+      fromApi.forEach((t) => pushTemplate(templates, t.id, t.name));
+    } catch (_) {
+      /* API nova de modelos pode falhar na versão antiga; cai na busca */
+    }
+
+    try {
+      const fromSearch = await listTemplatesFromSearch(
+        token,
+        dataSourceId,
+        mapping
+      );
+      fromSearch.forEach((t) => pushTemplate(templates, t.id, t.name));
     } catch (_) {
       /* ignore */
     }
 
+    templates.sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), "pt", {
+        sensitivity: "base"
+      })
+    );
     return cacheSet(templateCache, dataSourceId, templates);
   }
 
@@ -1229,7 +1325,7 @@
   async function queryActivitiesByProcess(token, settings, processPageId) {
     const actId = settings.activitiesDataSourceId;
     if (!actId || !processPageId) {
-      return { activities: [], statusColumns: [], templates: [] };
+      return { activities: [], statusColumns: [], templates: [], extraFields: [] };
     }
 
     const ds = await retrieveDataSource(token, actId);
@@ -1312,17 +1408,21 @@
       }
     }
 
-    let templates = [];
-    try {
-      templates = await listTemplates(token, actId, mapping);
-    } catch (_) {
-      templates = [];
+    let users = [];
+    const extraFieldsPreview = Schema().extraActivityFieldDefs(schema, mapping, []);
+    if (extraFieldsPreview.some((f) => f && f.type === "people")) {
+      try {
+        users = await listUsers(token);
+      } catch (_) {
+        users = [];
+      }
     }
 
     return {
       activities,
       statusColumns,
-      templates
+      templates: [],
+      extraFields: Schema().extraActivityFieldDefs(schema, mapping, users)
     };
   }
 
@@ -1617,6 +1717,21 @@
       properties[orderProp] = { number: data.sortIndex };
     }
 
+    const extraProps = Schema().writeProperties(
+      { extra: mapping.extra },
+      {},
+      {
+        extra: data.extra && typeof data.extra === "object" ? data.extra : {},
+        extraFields:
+          Array.isArray(data.extraFields) && data.extraFields.length
+            ? data.extraFields
+            : Schema().extraActivityFieldDefs(schema, mapping, [])
+      }
+    );
+    Object.keys(extraProps).forEach((name) => {
+      if (!properties[name]) properties[name] = extraProps[name];
+    });
+
     let matchedTemplate = null;
     if (data.templateId) {
       try {
@@ -1707,6 +1822,23 @@
         const iso = data.due ? (Schema().parseDateBr(data.due) || (data.due.match(/^\d{4}-\d{2}-\d{2}/) ? data.due : null)) : null;
         properties[mapping.due] = iso ? { date: { start: iso } } : { date: null };
       }
+    }
+
+    if (data.extra && typeof data.extra === "object") {
+      const extraProps = Schema().writeProperties(
+        { extra: mapping.extra },
+        {},
+        {
+          extra: data.extra,
+          extraFields:
+            Array.isArray(data.extraFields) && data.extraFields.length
+              ? data.extraFields
+              : Schema().extraActivityFieldDefs(schema, mapping, [])
+        }
+      );
+      Object.keys(extraProps).forEach((name) => {
+        properties[name] = extraProps[name];
+      });
     }
 
     const page = await notionFetch(token, "/pages/" + encodeURIComponent(activityPageId), {

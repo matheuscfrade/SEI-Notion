@@ -24,6 +24,12 @@
   let onOpen = null;
   let onCreate = null;
   let loadGen = 0;
+  const NEW_BTN_LABEL = "Novo extra SEI";
+  const NEW_BTN_TITLE =
+    "Cria um processo no Notion desvinculado do SEI. Um número SEI no nome não faz o vínculo — para isso, clique na badge N ao lado do processo.";
+  const NEW_CONFIRM_TITLE = "Só para processos extra SEI";
+  const NEW_CONFIRM_TEXT =
+    "Este botão cria um card no Notion desvinculado de qualquer processo do SEI. Colocar um número SEI no nome não vincula o card ao processo. Para ligar a um processo real, feche esta lista e clique na badge N ao lado do número na Controle de Processos ou no processo aberto.";
 
   function Schema() {
     return root.SeiNotionSchema;
@@ -89,10 +95,63 @@
       border-radius: 6px;
       background: #1e3a8a;
       color: #fff;
-      font: 600 11px/1 "Segoe UI", system-ui, sans-serif;
+      font: 600 11px/1.2 "Segoe UI", system-ui, sans-serif;
       cursor: pointer;
+      white-space: nowrap;
     }
     .new-btn:hover { background: #172554; }
+    .confirm {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    .confirm[hidden] { display: none; }
+    .confirm-card {
+      width: min(440px, 100%);
+      padding: 16px 16px 14px;
+      border: 1px solid #fbbf24;
+      border-radius: 10px;
+      background: #fffbeb;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.28);
+    }
+    .confirm-card h4 {
+      margin: 0 0 8px;
+      font: 700 14px/1.3 "Segoe UI", system-ui, sans-serif;
+      color: #92400e;
+    }
+    .confirm-card p {
+      margin: 0 0 14px;
+      font: 400 12px/1.5 "Segoe UI", system-ui, sans-serif;
+      color: #78350f;
+    }
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .confirm-cancel {
+      padding: 6px 12px;
+      border: 1px solid #d6d3d1;
+      border-radius: 6px;
+      background: #fff;
+      color: #44403c;
+      font: 600 12px/1 "Segoe UI", system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .confirm-ok {
+      padding: 6px 12px;
+      border: 1px solid #1e3a8a;
+      border-radius: 6px;
+      background: #1e3a8a;
+      color: #fff;
+      font: 600 12px/1 "Segoe UI", system-ui, sans-serif;
+      cursor: pointer;
+    }
     .icon-btn {
       border: none;
       background: transparent;
@@ -422,7 +481,9 @@
         <div class="head">
           <h3 id="sn-unlinked-title">Processos no Notion</h3>
           <div class="head-actions">
-            <button type="button" class="new-btn" id="sn-unlinked-new">Novo processo</button>
+            <button type="button" class="new-btn" id="sn-unlinked-new" title="${esc(
+              NEW_BTN_TITLE
+            )}">${esc(NEW_BTN_LABEL)}</button>
             <button type="button" class="icon-btn" id="sn-unlinked-refresh" title="Atualizar">↻</button>
             <button type="button" class="icon-btn" id="sn-unlinked-close" title="Fechar">×</button>
           </div>
@@ -433,6 +494,16 @@
           ${filterBtn("external", "Processos fora do SEI")}
         </div>
         <div class="body">${bodyHtml()}</div>
+        <div class="confirm" id="sn-unlinked-new-confirm" hidden>
+          <div class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="sn-unlinked-new-confirm-title" aria-describedby="sn-unlinked-new-confirm-text">
+            <h4 id="sn-unlinked-new-confirm-title">${esc(NEW_CONFIRM_TITLE)}</h4>
+            <p id="sn-unlinked-new-confirm-text">${esc(NEW_CONFIRM_TEXT)}</p>
+            <div class="confirm-actions">
+              <button type="button" class="confirm-cancel" id="sn-unlinked-new-cancel">Cancelar</button>
+              <button type="button" class="confirm-ok" id="sn-unlinked-new-ok">Continuar</button>
+            </div>
+          </div>
+        </div>
       </div>`;
   }
 
@@ -656,8 +727,37 @@
       };
     }
     const newBtn = shadow.getElementById("sn-unlinked-new");
+    const newConfirm = shadow.getElementById("sn-unlinked-new-confirm");
+    const newCancel = shadow.getElementById("sn-unlinked-new-cancel");
+    const newOk = shadow.getElementById("sn-unlinked-new-ok");
+    function hideNewConfirm() {
+      if (newConfirm) newConfirm.hidden = true;
+    }
     if (newBtn && onCreate) {
       newBtn.onclick = () => {
+        if (newConfirm) {
+          newConfirm.hidden = false;
+          if (newOk) newOk.focus();
+        } else {
+          onCreate();
+        }
+      };
+    }
+    if (newCancel) newCancel.onclick = hideNewConfirm;
+    if (newConfirm) {
+      newConfirm.onclick = (ev) => {
+        if (ev.target === newConfirm) hideNewConfirm();
+      };
+      newConfirm.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Escape") return;
+        ev.preventDefault();
+        hideNewConfirm();
+        if (newBtn) newBtn.focus();
+      });
+    }
+    if (newOk && onCreate) {
+      newOk.onclick = () => {
+        hideNewConfirm();
         onCreate();
       };
     }

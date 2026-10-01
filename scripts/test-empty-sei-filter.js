@@ -162,5 +162,100 @@ assert(
   "grava Número SEI vazio para a listagem encontrar o processo interno"
 );
 
+const nupAsTitle = S.writeProperties(
+  {
+    title: "",
+    processNumber: "Número SEI",
+    extra: []
+  },
+  {
+    processNumber: "title",
+    _titleColumn: "Número SEI"
+  },
+  {
+    name: "Rotina da equipe",
+    processNumber: ""
+  }
+);
+assert(
+  nupAsTitle["Número SEI"] &&
+    nupAsTitle["Número SEI"].title &&
+    nupAsTitle["Número SEI"].title[0].text.content === "Rotina da equipe",
+  "quando Número SEI é o título, o nome do processo interno permanece no title"
+);
+
+const nupTitleSpecInternal = S.writeProperties(
+  {
+    title: "Especificação",
+    processNumber: "Número SEI",
+    extra: []
+  },
+  {
+    title: "rich_text",
+    processNumber: "title",
+    _titleColumn: "Número SEI"
+  },
+  {
+    name: "Rotina da equipe",
+    processNumber: ""
+  }
+);
+assert(
+  nupTitleSpecInternal.Especificação &&
+    nupTitleSpecInternal.Especificação.rich_text[0].text.content ===
+      "Rotina da equipe",
+  "especificação do interno vai para rich_text"
+);
+assert(
+  nupTitleSpecInternal["Número SEI"] &&
+    nupTitleSpecInternal["Número SEI"].title &&
+    nupTitleSpecInternal["Número SEI"].title[0].text.content ===
+      "Rotina da equipe",
+  "title nativo do interno fica com o nome, não vazio"
+);
+
+const renameExisting = S.writeProperties(
+  {
+    title: "",
+    processNumber: "Número SEI",
+    extra: []
+  },
+  {
+    processNumber: "title",
+    _titleColumn: "Número SEI"
+  },
+  {
+    name: "Novo nome",
+    processNumber: "Rotina da equipe"
+  }
+);
+assertEqual(
+  renameExisting["Número SEI"].title[0].text.content,
+  "Novo nome",
+  "renomear extra SEI não regrava o nome antigo como Número SEI"
+);
+
+const renameSameColumn = S.writeProperties(
+  {
+    title: "Nome",
+    processNumber: "Nome",
+    extra: []
+  },
+  {
+    title: "title",
+    processNumber: "title",
+    _titleColumn: "Nome"
+  },
+  {
+    name: "Novo nome",
+    processNumber: "Rotina da equipe"
+  }
+);
+assertEqual(
+  renameSameColumn.Nome.title[0].text.content,
+  "Novo nome",
+  "renomear extra SEI na coluna título não concatena o nome antigo"
+);
+
 if (process.exitCode) console.error("test-empty-sei-filter failed");
 else console.log("test-empty-sei-filter passed");

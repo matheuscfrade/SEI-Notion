@@ -538,6 +538,49 @@
       font-size: 12px;
       white-space: nowrap;
     }
+    .sn-kanban-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .sn-kanban-tools #sn-kanban-search {
+      flex: 1 1 180px;
+      min-width: 140px;
+    }
+    .sn-kanban-sort-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #475569;
+    }
+    .sn-kanban-sort-wrap select {
+      width: auto;
+      min-width: 168px;
+      flex: 0 0 auto;
+    }
+    .sn-kanban-filter-chip {
+      border: 1px solid #e2e8f0;
+      background: #fff;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 0 10px;
+      border-radius: 999px;
+      cursor: pointer;
+      height: 31px;
+      white-space: nowrap;
+    }
+    .sn-kanban-filter-chip:hover {
+      border-color: #94a3b8;
+    }
+    .sn-kanban-filter-chip.is-on {
+      background: #fee2e2;
+      border-color: #fca5a5;
+      color: #b91c1c;
+    }
     .sn-kanban-input {
       font: inherit;
       font-size: 12px;
@@ -704,6 +747,21 @@
       opacity: 0.4;
       cursor: grabbing;
     }
+    .sn-kanban-card.is-overdue {
+      border-color: #fca5a5;
+      background: #fff7f7;
+      box-shadow: inset 3px 0 0 #dc2626;
+    }
+    .sn-kanban-card.is-overdue:hover {
+      border-color: #f87171;
+    }
+    .sn-kanban-card.is-nodrag {
+      cursor: pointer;
+    }
+    .sn-kanban-chip.is-overdue {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
     .sn-kanban-card-top {
       display: flex;
       align-items: flex-start;
@@ -779,7 +837,7 @@
       font-size: 10px;
       font-weight: 600;
       color: #475569;
-      cursor: pointer;
+      cursor: default;
     }
     .sn-kanban-todo-badge:hover {
       background: #e2e8f0;
@@ -788,6 +846,47 @@
     .sn-kanban-todo-badge.is-done {
       background: #dcfce7;
       color: #15803d;
+    }
+    .sn-act-detail {
+      min-height: 0;
+    }
+    .sn-act-detail-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .sn-act-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .sn-act-detail-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 4px 2px 8px;
+    }
+    .sn-act-detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .sn-act-detail-grid .sn-span2,
+    .sn-act-detail-body > .sn-field {
+      grid-column: 1 / -1;
+    }
+    .sn-act-detail-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    @media (max-width: 640px) {
+      .sn-act-detail-grid { grid-template-columns: 1fr; }
     }
     .sn-card-checklist {
       border-top: 1px solid #f1f5f9;
@@ -1167,6 +1266,10 @@
   `;
 
   let current = null;
+  let openActivityId = "";
+  let kanbanFilterText = "";
+  let kanbanFilterOverdue = false;
+  let kanbanSort = "import";
   let showSeiInfo = false;
   let showOtherInfo = false;
   let uiMode = "modal";
@@ -1681,6 +1784,10 @@
     } catch (_) {
       form = null;
     }
+    openActivityId = "";
+    kanbanFilterText = "";
+    kanbanFilterOverdue = false;
+    kanbanSort = "import";
     stopPanelWatch();
     if (current && current.onKey && current.doc) {
       current.doc.removeEventListener("keydown", current.onKey, true);
@@ -2200,7 +2307,7 @@
                   : page
                     ? "Página no Notion"
                     : internal
-                      ? "Novo processo interno"
+                      ? "Novo processo extra SEI"
                       : "Sem página no Notion"
               }</h2>
               <div class="sn-nup">${esc(
@@ -2222,7 +2329,7 @@
               ${ctx.lockMine && !locked ? `<p class="sn-mine">Você está editando. Enquanto estiver com o processo em edição, as outras pessoas não conseguem salvar.</p>` : ""}
               ${!page && !ctx.error && !locked ? `<p class="sn-msg">${
                 internal
-                  ? "Crie um processo no Notion sem ligar a um número do SEI. Depois você adiciona as atividades no quadro."
+                  ? "Este card fica desvinculado do SEI. Um número SEI no nome não faz o vínculo — para ligar a um processo real, clique na badge N ao lado do número. Depois você adiciona as atividades no quadro."
                   : "Este processo ainda não está no Notion. Preencha as informações do Notion e crie o card." + (docked ? "" : " Os próximos cliques abrem o mesmo card para editar.")
               }</p>` : ""}
               ${fieldsHtml}
@@ -2242,8 +2349,101 @@
       </div>`;
   }
 
-  const expandedActivities = new Set();
-  const editingActivities = new Set();
+  function activityExtraOpts() {
+    return {
+      idPrefix: "sn-act-extra-",
+      nameAttr: "data-act-extra-name",
+      typeAttr: "data-act-extra-type"
+    };
+  }
+
+  function activityDetailHtml(ctx, act, rawCols, busy, locked) {
+    const freeze = !!busy || !!locked;
+    const dis = freeze ? " disabled" : "";
+    const extraFields = Array.isArray(ctx.activityExtraFields) ? ctx.activityExtraFields : [];
+    const extraValues = (act && act.extra) || {};
+    const extraHtml = extraFields
+      .map((field) =>
+        extraFieldHtml(
+          field,
+          extraValues[field.name],
+          freeze,
+          ctx,
+          false,
+          activityExtraOpts()
+        )
+      )
+      .join("");
+    const Schema = globalThis.SeiNotionSchema;
+    const overdue =
+      Schema && Schema.isActivityOverdue ? Schema.isActivityOverdue(act) : false;
+    const todos = Array.isArray(act.checklist) ? act.checklist : [];
+    const todoCount = act.todoCount || todos.length;
+    const completed = act.todoCompleted || todos.filter((t) => t.checked).length;
+    const statusOpts = rawCols
+      .map(
+        (c) =>
+          `<option value="${esc(c.name)}"${(act.statusName || (rawCols[0] && rawCols[0].name) || "") === c.name ? " selected" : ""}>${esc(c.name)}</option>`
+      )
+      .join("");
+    const checklistItems = todos.length
+      ? todos
+          .map(
+            (t) => `
+            <div class="sn-card-todo-item${t.checked ? " on" : ""}" data-todo-id="${esc(t.id)}">
+              <input type="checkbox" data-act-id="${esc(act.activityId)}" data-todo-id="${esc(t.id)}"${t.checked ? " checked" : ""}${dis} />
+              <span>${esc(t.text)}</span>
+              <button type="button" class="sn-todo-del" data-act-id="${esc(act.activityId)}" data-todo-id="${esc(t.id)}"${dis}>×</button>
+            </div>`
+          )
+          .join("")
+      : '<span style="font-size: 11px; color: #94a3b8;">Sem itens no checklist.</span>';
+
+    return `
+      <div class="sn-kanban-section sn-act-detail">
+        <div class="sn-kanban-head sn-act-detail-head">
+          <button type="button" id="sn-act-back" class="sn-btn sn-btn-ghost sn-act-back">← Voltar ao quadro</button>
+          <span class="sn-kanban-title">Detalhes da atividade</span>
+          ${overdue ? '<span class="sn-kanban-chip is-overdue">Em atraso</span>' : ""}
+        </div>
+        <div class="sn-act-detail-body">
+          <label class="sn-field">
+            <span>Título</span>
+            <input id="sn-act-title" class="sn-input" type="text" placeholder="Título *" value="${esc(act.title)}" maxlength="2000" ${dis} />
+          </label>
+          <div class="sn-act-detail-grid">
+            <label class="sn-field">
+              <span>Responsável</span>
+              <input id="sn-act-assignee" class="sn-input" type="text" placeholder="Responsável" value="${esc(act.assignee || "")}" maxlength="200" ${dis} />
+            </label>
+            <label class="sn-field">
+              <span>Prazo</span>
+              ${dateInputHtml("sn-act-due", "", act.due, dis, "")}
+            </label>
+            <label class="sn-field">
+              <span>Status</span>
+              <select id="sn-act-status" class="sn-input" ${dis}>${statusOpts}</select>
+            </label>
+          </div>
+          ${extraHtml}
+          <div class="sn-field">
+            <span>Checklist${todoCount ? " (" + completed + "/" + todoCount + ")" : ""}</span>
+            <div class="sn-card-checklist">
+              ${checklistItems}
+              <div class="sn-card-todo-add">
+                <input type="text" placeholder="Novo item" data-act-id="${esc(act.activityId)}" maxlength="2000"${dis} />
+                <button type="button" class="sn-btn-card-add-todo" data-act-id="${esc(act.activityId)}"${dis}>+</button>
+              </div>
+            </div>
+          </div>
+          <div class="sn-act-detail-actions">
+            <button type="button" id="sn-act-save" class="sn-btn sn-btn-primary" ${dis}>Salvar atividade</button>
+            <button type="button" id="sn-act-delete" class="sn-btn sn-btn-ghost sn-kanban-card-del" data-activity-id="${esc(act.activityId)}" ${dis}>Excluir</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   function kanbanHtml(ctx, page, busy, locked) {
     if (!page || !page.pageId) {
@@ -2262,21 +2462,38 @@
         ? ctx.activityStatusColumns.slice()
         : [];
 
+    const Schema = globalThis.SeiNotionSchema;
     const activitiesRaw = Array.isArray(ctx.activities) ? ctx.activities : [];
-    const activities =
-      globalThis.SeiNotionSchema && SeiNotionSchema.sortActivities
-        ? SeiNotionSchema.sortActivities(activitiesRaw)
+    const activitiesAll =
+      Schema && Schema.sortActivities
+        ? Schema.sortActivities(activitiesRaw, "import")
         : activitiesRaw.slice();
-    const templates =
-      (Array.isArray(ctx.activityTemplates) && ctx.activityTemplates.length ? ctx.activityTemplates : null) ||
-      (Array.isArray(ctx.templates) && ctx.templates.length ? ctx.templates : []) ||
-      [];
+    const activitiesFiltered =
+      Schema && Schema.filterActivities
+        ? Schema.filterActivities(activitiesAll, {
+            text: kanbanFilterText,
+            overdue: kanbanFilterOverdue
+          })
+        : activitiesAll.slice();
+    const activities =
+      Schema && Schema.sortActivities
+        ? Schema.sortActivities(activitiesFiltered, kanbanSort)
+        : activitiesFiltered.slice();
+    const templates = Array.isArray(ctx.templates) ? ctx.templates : [];
     const freeze = !!busy || !!locked;
     const dis = freeze ? " disabled" : "";
+    const canDrag =
+      !freeze &&
+      kanbanSort === "import" &&
+      !String(kanbanFilterText || "").trim() &&
+      !kanbanFilterOverdue;
+    const overdueCount = Schema && Schema.isActivityOverdue
+      ? activitiesAll.filter((a) => Schema.isActivityOverdue(a)).length
+      : 0;
 
     // Ensure all unique activity statuses are represented as columns
     const colNames = new Set(rawCols.map((c) => c.name));
-    activities.forEach((act) => {
+    activitiesAll.forEach((act) => {
       if (act.statusName && !colNames.has(act.statusName)) {
         rawCols.push({
           id: act.statusName,
@@ -2295,21 +2512,32 @@
       );
     }
 
+    if (openActivityId) {
+      const openAct = activitiesAll.find((a) => a && a.activityId === openActivityId);
+      if (openAct) {
+        return activityDetailHtml(ctx, openAct, rawCols, busy, locked);
+      }
+      openActivityId = "";
+    }
+
     const colMap = {};
+    const colMapAll = {};
     rawCols.forEach((c) => {
       colMap[c.name] = [];
+      colMapAll[c.name] = [];
     });
     const fallbackCol = rawCols[0] ? rawCols[0].name : "A Fazer";
 
-    activities.forEach((act) => {
+    function putInCol(map, act) {
       const st = act.statusName || fallbackCol;
-      if (colMap[st]) {
-        colMap[st].push(act);
-      } else {
-        if (!colMap[fallbackCol]) colMap[fallbackCol] = [];
-        colMap[fallbackCol].push(act);
+      if (map[st]) map[st].push(act);
+      else {
+        if (!map[fallbackCol]) map[fallbackCol] = [];
+        map[fallbackCol].push(act);
       }
-    });
+    }
+    activitiesAll.forEach((act) => putInCol(colMapAll, act));
+    activities.forEach((act) => putInCol(colMap, act));
 
     const tplPickerHtml = `
       <div class="sn-tpl-picker-wrap">
@@ -2353,34 +2581,10 @@
           </div>
         `;
 
+        const allInCol = colMapAll[col.name] || [];
         const cardsHtml = items.length
           ? items
               .map((act) => {
-                const isEditing = editingActivities.has(act.activityId);
-                if (isEditing) {
-                  return `
-                    <div class="sn-kanban-card is-editing" data-activity-id="${esc(act.activityId)}">
-                      <div class="sn-kanban-edit-box">
-                        <span style="font-size: 11px; font-weight: 800; color: #1e3a8a;">Editar Atividade</span>
-                        <input class="sn-kanban-input sn-edit-title" type="text" placeholder="Título *" value="${esc(act.title)}" maxlength="2000" ${dis} />
-                        <input class="sn-kanban-input sn-edit-assignee" type="text" placeholder="Responsável" value="${esc(act.assignee || "")}" maxlength="200" ${dis} />
-                        <div class="sn-date-wrap" style="width: 100%;">
-                          <input class="sn-kanban-input sn-date-input sn-edit-due" type="text" placeholder="dd/mm/aaaa" maxlength="10" value="${esc(formatBrDate(act.due))}" ${dis} autocomplete="off" />
-                          <button type="button" class="sn-date-btn" title="Selecionar data no calendário" tabindex="-1" ${dis}>📅</button>
-                        </div>
-                        <select class="sn-kanban-input sn-edit-status" ${dis}>
-                          ${rawCols.map((c) => `<option value="${esc(c.name)}"${(act.statusName || rawCols[0].name) === c.name ? " selected" : ""}>${esc(c.name)}</option>`).join("")}
-                        </select>
-                        <div style="display: flex; gap: 6px; margin-top: 4px;">
-                          <button type="button" class="sn-btn sn-btn-primary sn-btn-save-act-edit" data-activity-id="${esc(act.activityId)}" style="padding: 5px 12px; font-size: 11px;" ${dis}>💾 Salvar</button>
-                          <button type="button" class="sn-btn sn-btn-ghost sn-btn-cancel-act-edit" data-activity-id="${esc(act.activityId)}" style="padding: 5px 10px; font-size: 11px;">Cancelar</button>
-                        </div>
-                      </div>
-                    </div>
-                  `;
-                }
-
-                const isExpanded = expandedActivities.has(act.activityId);
                 const todos = Array.isArray(act.checklist) ? act.checklist : [];
                 const todoCount = act.todoCount || todos.length;
                 const completed =
@@ -2389,48 +2593,30 @@
                   todoCount > 0 && completed === todoCount ? " is-done" : "";
                 const badgeText =
                   todoCount > 0 ? `${completed}/${todoCount}` : "Checklist";
-
-                const checklistItemsHtml = isExpanded
-                  ? `<div class="sn-card-checklist">
-                      ${
-                        todos.length
-                          ? todos
-                              .map(
-                                (t) => `
-                              <div class="sn-card-todo-item${t.checked ? " on" : ""}" data-todo-id="${esc(t.id)}">
-                                <input type="checkbox" data-act-id="${esc(act.activityId)}" data-todo-id="${esc(t.id)}"${t.checked ? " checked" : ""}${dis} />
-                                <span>${esc(t.text)}</span>
-                                <button type="button" class="sn-todo-del" data-act-id="${esc(act.activityId)}" data-todo-id="${esc(t.id)}"${dis}>×</button>
-                              </div>
-                            `
-                              )
-                              .join("")
-                          : '<span style="font-size: 10px; color: #94a3b8;">Sem itens no checklist.</span>'
-                      }
-                      <div class="sn-card-todo-add">
-                        <input type="text" placeholder="Novo item" data-act-id="${esc(act.activityId)}" maxlength="2000"${dis} />
-                        <button type="button" class="sn-btn-card-add-todo" data-act-id="${esc(act.activityId)}"${dis}>+</button>
-                      </div>
-                    </div>`
-                  : "";
+                const overdue =
+                  Schema && Schema.isActivityOverdue
+                    ? Schema.isActivityOverdue(act)
+                    : false;
+                const cardClass =
+                  "sn-kanban-card" +
+                  (overdue ? " is-overdue" : "") +
+                  (canDrag ? "" : " is-nodrag");
 
                 return `
-                  <div class="sn-kanban-card" draggable="${freeze ? "false" : "true"}" data-activity-id="${esc(act.activityId)}">
+                  <div class="${cardClass}" draggable="${canDrag ? "true" : "false"}" data-activity-id="${esc(act.activityId)}" title="${overdue ? "Em atraso — abrir detalhes" : "Abrir detalhes"}">
                     <div class="sn-kanban-card-top">
                       <span class="sn-kanban-card-title">${esc(act.title)}</span>
                       <div class="sn-kanban-card-actions">
-                        <button type="button" class="sn-kanban-card-btn sn-kanban-card-edit" data-activity-id="${esc(act.activityId)}" title="Editar atividade" draggable="false"${dis}>✏️</button>
                         <button type="button" class="sn-kanban-card-btn sn-kanban-card-del" data-activity-id="${esc(act.activityId)}" title="Excluir atividade" draggable="false"${dis}>×</button>
                       </div>
                     </div>
                     <div class="sn-kanban-card-meta">
-                      <span class="sn-kanban-todo-badge${doneClass}" data-act-toggle="${esc(act.activityId)}" title="Ver checklist">
+                      <span class="sn-kanban-todo-badge${doneClass}" title="Checklist">
                         <span>✓</span> ${esc(badgeText)}
                       </span>
                       ${act.assignee ? `<span class="sn-kanban-chip" title="Atribuição / Responsável">👤 ${esc(act.assignee)}</span>` : ""}
-                      ${act.due ? `<span class="sn-kanban-chip" title="Prazo">📅 ${esc(dateValue(act.due))}</span>` : ""}
+                      ${act.due ? `<span class="sn-kanban-chip${overdue ? " is-overdue" : ""}" title="${overdue ? "Prazo em atraso" : "Prazo"}">${overdue ? "⚠ " : "📅 "}${esc(dateValue(act.due))}</span>` : ""}
                     </div>
-                    ${checklistItemsHtml}
                   </div>
                 `;
               })
@@ -2442,7 +2628,7 @@
             <div class="sn-kanban-col-head">
               <span>${esc(col.name)}</span>
               ${colNavHtml}
-              <span class="sn-kanban-badge">${items.length}</span>
+              <span class="sn-kanban-badge">${items.length === allInCol.length ? items.length : items.length + "/" + allInCol.length}</span>
             </div>
             <div class="sn-kanban-cards" data-status-name="${esc(col.name)}">
               ${cardsHtml}
@@ -2452,11 +2638,36 @@
       })
       .join("");
 
+    const countLabel =
+      activities.length === activitiesAll.length
+        ? String(activities.length)
+        : activities.length + " de " + activitiesAll.length;
+    const sortImportSel = kanbanSort === "import" ? " selected" : "";
+    const sortTitleSel = kanbanSort === "title" ? " selected" : "";
+    const sortDueSel = kanbanSort === "due" ? " selected" : "";
+    const overdueOn = kanbanFilterOverdue ? " is-on" : "";
+    const toolsHtml = `
+      <div class="sn-kanban-tools">
+        <input id="sn-kanban-search" class="sn-kanban-input" type="search" placeholder="Buscar atividade…" value="${esc(kanbanFilterText)}" autocomplete="off" />
+        <label class="sn-kanban-sort-wrap">Ordenar
+          <select id="sn-kanban-sort" class="sn-kanban-input" aria-label="Ordenar atividades">
+            <option value="import"${sortImportSel}>Quadro / importação</option>
+            <option value="title"${sortTitleSel}>Nome (A–Z)</option>
+            <option value="due"${sortDueSel}>Prazo</option>
+          </select>
+        </label>
+        <button type="button" id="sn-kanban-overdue" class="sn-kanban-filter-chip${overdueOn}" aria-pressed="${kanbanFilterOverdue ? "true" : "false"}">
+          Em atraso${overdueCount ? " (" + overdueCount + ")" : ""}
+        </button>
+      </div>
+    `;
+
     return `
       <div class="sn-kanban-section">
         <div class="sn-kanban-head">
-          <span class="sn-kanban-title">Quadro de Atividades (${activities.length})</span>
+          <span class="sn-kanban-title">Quadro de Atividades (${esc(countLabel)})</span>
         </div>
+        ${toolsHtml}
         ${newActBox}
         <div class="sn-kanban-board">
           ${colsHtml}
@@ -2465,10 +2676,14 @@
     `;
   }
 
-  function extraFieldHtml(field, value, busy, ctx, readonly) {
+  function extraFieldHtml(field, value, busy, ctx, readonly, opts) {
     const fromSei = !!readonly;
     const dis = busy || fromSei ? "disabled" : "";
-    const id = "sn-extra-" + field.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const idPrefix = (opts && opts.idPrefix) || "sn-extra-";
+    const nameAttr = (opts && opts.nameAttr) || "data-extra-name";
+    const typeAttr = (opts && opts.typeAttr) || "data-extra-type";
+    const id = idPrefix + field.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const dataPair = `${nameAttr}="${esc(field.name)}" ${typeAttr}="${field.type}"`;
     const label = `<span>${esc(field.name)}${fromSei ? " " + seiTag() : ""}</span>`;
     const wrap = fromSei ? "sn-field is-sei" : "sn-field";
     let current = value;
@@ -2491,18 +2706,18 @@
           return `<option value="${esc(v)}"${sel}>${esc(n)}</option>`;
         })
         .join("");
-      return `<label class="${wrap}">${label}<select id="${id}" data-extra-name="${esc(field.name)}" data-extra-type="${field.type}" ${dis}><option value="">—</option>${opts}</select></label>`;
+      return `<label class="${wrap}">${label}<select id="${id}" ${dataPair} ${dis}><option value="">—</option>${opts}</select></label>`;
     }
     if (field.type === "date") {
-      return `<label class="${wrap}">${label}${dateInputHtml(id, field.name, current, dis, "", `data-extra-name="${esc(field.name)}" data-extra-type="date"`)}</label>`;
+      return `<label class="${wrap}">${label}${dateInputHtml(id, field.name, current, dis, "", dataPair)}</label>`;
     }
     if (field.type === "checkbox") {
       const on = current ? " checked" : "";
-      return `<label class="${wrap} sn-check">${label}<input id="${id}" data-extra-name="${esc(field.name)}" data-extra-type="checkbox" type="checkbox"${on} ${dis} /></label>`;
+      return `<label class="${wrap} sn-check">${label}<input id="${id}" ${dataPair} type="checkbox"${on} ${dis} /></label>`;
     }
     if (field.type === "number") {
       const v = current == null ? "" : String(current);
-      return `<label class="${wrap}">${label}<input id="${id}" data-extra-name="${esc(field.name)}" data-extra-type="number" type="number" value="${esc(v)}" ${dis} /></label>`;
+      return `<label class="${wrap}">${label}<input id="${id}" ${dataPair} type="number" value="${esc(v)}" ${dis} /></label>`;
     }
     if (field.type === "multi_select") {
       const selected = new Set();
@@ -2511,7 +2726,7 @@
         const chips = [...selected]
           .map((n) => `<span class="sn-chip on sn-chip-locked">${esc(n)}</span>`)
           .join("");
-        return `<div class="${wrap}">${label}<div class="sn-chips" data-extra-name="${esc(field.name)}" data-extra-type="multi_select" data-sei-locked="1">${chips || '<p class="sn-msg">Nenhum marcador no SEI.</p>'}</div></div>`;
+        return `<div class="${wrap}">${label}<div class="sn-chips" ${dataPair} data-sei-locked="1">${chips || '<p class="sn-msg">Nenhum marcador no SEI.</p>'}</div></div>`;
       }
       const chips = (field.options || [])
         .map((o) => {
@@ -2520,9 +2735,9 @@
           return `<button type="button" class="sn-chip sn-extra-chip${on}" data-label="${esc(n)}">${esc(n)}</button>`;
         })
         .join("");
-      return `<div class="${wrap}">${label}<div class="sn-chips" data-extra-name="${esc(field.name)}" data-extra-type="multi_select">${chips || '<p class="sn-msg">Sem opções.</p>'}</div></div>`;
+      return `<div class="${wrap}">${label}<div class="sn-chips" ${dataPair}>${chips || '<p class="sn-msg">Sem opções.</p>'}</div></div>`;
     }
-    return `<label class="${wrap}">${label}<input id="${id}" data-extra-name="${esc(field.name)}" data-extra-type="${field.type}" type="text" value="${esc(current || "")}" ${fromSei ? "readonly" : ""} ${dis} /></label>`;
+    return `<label class="${wrap}">${label}<input id="${id}" ${dataPair} type="text" value="${esc(current || "")}" ${fromSei ? "readonly" : ""} ${dis} /></label>`;
   }
 
   function esc(s) {
@@ -2531,6 +2746,64 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function readActivityFormFrom(shadow) {
+    if (!shadow) return null;
+    const titleEl = shadow.getElementById("sn-act-title");
+    if (!titleEl) return null;
+    const assEl = shadow.getElementById("sn-act-assignee");
+    const dueEl = shadow.getElementById("sn-act-due");
+    const statusEl = shadow.getElementById("sn-act-status");
+    const extra = {};
+    shadow.querySelectorAll("[data-act-extra-type]").forEach((el) => {
+      const name = el.getAttribute("data-act-extra-name");
+      const type = el.getAttribute("data-act-extra-type");
+      if (!name) return;
+      if (type === "checkbox") extra[name] = !!el.checked;
+      else if (type === "multi_select") {
+        extra[name] = [...el.querySelectorAll(".sn-chip.on")].map((b) =>
+          b.getAttribute("data-label")
+        );
+      } else if (type === "number") extra[name] = el.value === "" ? null : el.value;
+      else if (type === "date") extra[name] = el.value ? (toIsoDate(el.value) || parseDateBr(el.value) || "") : "";
+      else extra[name] = el.value !== "" ? el.value : "";
+    });
+    return {
+      title: titleEl.value || "",
+      assignee: assEl ? assEl.value : "",
+      due: dueEl ? dueEl.value : "",
+      statusName: statusEl ? statusEl.value : "",
+      extra
+    };
+  }
+
+  function restoreActivityForm(shadow, draft) {
+    if (!shadow || !draft) return;
+    const titleEl = shadow.getElementById("sn-act-title");
+    const assEl = shadow.getElementById("sn-act-assignee");
+    const dueEl = shadow.getElementById("sn-act-due");
+    const statusEl = shadow.getElementById("sn-act-status");
+    if (titleEl && draft.title) titleEl.value = draft.title;
+    if (assEl && draft.assignee != null) assEl.value = draft.assignee;
+    if (dueEl && draft.due) dueEl.value = draft.due;
+    if (statusEl && draft.statusName) statusEl.value = draft.statusName;
+    if (!draft.extra) return;
+    shadow.querySelectorAll("[data-act-extra-type]").forEach((el) => {
+      const name = el.getAttribute("data-act-extra-name");
+      const type = el.getAttribute("data-act-extra-type");
+      if (!name || !(name in draft.extra)) return;
+      const value = draft.extra[name];
+      if (type === "checkbox") el.checked = !!value;
+      else if (type === "multi_select") {
+        const selected = new Set(Array.isArray(value) ? value : []);
+        el.querySelectorAll(".sn-chip").forEach((chip) => {
+          chip.classList.toggle("on", selected.has(chip.getAttribute("data-label")));
+        });
+      } else if (value != null) {
+        el.value = type === "date" ? formatBrDate(value) || value : value;
+      }
+    });
   }
 
   function saveUiState(shadow) {
@@ -2576,21 +2849,9 @@
       status: shadow.getElementById("sn-new-act-status") ? shadow.getElementById("sn-new-act-status").value : ""
     };
 
-    const editingDrafts = {};
-    shadow.querySelectorAll(".sn-kanban-card.is-editing").forEach((card) => {
-      const actId = card.getAttribute("data-activity-id");
-      if (!actId) return;
-      const titleInput = card.querySelector(".sn-edit-title");
-      const assInput = card.querySelector(".sn-edit-assignee");
-      const dueInput = card.querySelector(".sn-edit-due");
-      const statusSelect = card.querySelector(".sn-edit-status");
-      editingDrafts[actId] = {
-        title: titleInput ? titleInput.value : "",
-        assignee: assInput ? assInput.value : "",
-        due: dueInput ? dueInput.value : "",
-        status: statusSelect ? statusSelect.value : ""
-      };
-    });
+    const activityDetailDraft = shadow.getElementById("sn-act-title")
+      ? readActivityFormFrom(shadow)
+      : null;
 
     return {
       modalScrollTop,
@@ -2602,7 +2863,7 @@
       activeSelector,
       activeCursor,
       newActDraft,
-      editingDrafts
+      activityDetailDraft
     };
   }
 
@@ -2646,20 +2907,8 @@
         if (sEl && state.newActDraft.status && !sEl.value) sEl.value = state.newActDraft.status;
       }
 
-      if (state.editingDrafts) {
-        shadow.querySelectorAll(".sn-kanban-card.is-editing").forEach((card) => {
-          const actId = card.getAttribute("data-activity-id");
-          const draft = state.editingDrafts[actId];
-          if (!draft) return;
-          const titleInput = card.querySelector(".sn-edit-title");
-          const assInput = card.querySelector(".sn-edit-assignee");
-          const dueInput = card.querySelector(".sn-edit-due");
-          const statusSelect = card.querySelector(".sn-edit-status");
-          if (titleInput && draft.title && !titleInput.value) titleInput.value = draft.title;
-          if (assInput && draft.assignee && !assInput.value) assInput.value = draft.assignee;
-          if (dueInput && draft.due && !dueInput.value) dueInput.value = draft.due;
-          if (statusSelect && draft.status && !statusSelect.value) statusSelect.value = draft.status;
-        });
+      if (state.activityDetailDraft && shadow.getElementById("sn-act-title")) {
+        restoreActivityForm(shadow, state.activityDetailDraft);
       }
 
       if (state.activeSelector) {
@@ -3217,6 +3466,7 @@
           "input:not([readonly]):not([disabled]), textarea:not([readonly]), select:not([disabled])"
         )
         .forEach((el) => {
+          if (el.id === "sn-kanban-search" || el.id === "sn-kanban-sort") return;
           el.addEventListener("focus", fireIntent);
         });
       shadow
@@ -3243,10 +3493,7 @@
     });
 
     setupDatePickers(shadow);
-    const templates =
-      (Array.isArray(ctx.activityTemplates) && ctx.activityTemplates.length ? ctx.activityTemplates : null) ||
-      (Array.isArray(ctx.templates) && ctx.templates.length ? ctx.templates : []) ||
-      [];
+    const templates = Array.isArray(ctx.templates) ? ctx.templates : [];
     setupTemplatePicker(shadow, ctx, templates);
 
     const createBtn = $("sn-create");
@@ -3330,6 +3577,30 @@
       }
     }
 
+    const searchEl = $("sn-kanban-search");
+    if (searchEl) {
+      searchEl.addEventListener("input", () => {
+        kanbanFilterText = String(searchEl.value || "");
+        rerender(ctx);
+      });
+    }
+    const sortEl = $("sn-kanban-sort");
+    if (sortEl) {
+      sortEl.addEventListener("change", () => {
+        const v = String(sortEl.value || "import");
+        kanbanSort = v === "title" || v === "due" ? v : "import";
+        rerender(ctx);
+      });
+    }
+    const overdueBtn = $("sn-kanban-overdue");
+    if (overdueBtn) {
+      overdueBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        kanbanFilterOverdue = !kanbanFilterOverdue;
+        rerender(ctx);
+      });
+    }
+
     const addActBtn = $("sn-new-act-btn");
     if (addActBtn) addActBtn.addEventListener("click", addActivityFromForm);
 
@@ -3345,66 +3616,41 @@
       }
     });
 
-    // Activity Edit Mode Toggles & Save
-    shadow.querySelectorAll(".sn-kanban-card-edit").forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
+    const actBack = $("sn-act-back");
+    if (actBack) {
+      actBack.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        if (ctx.locked) return;
-        const actId = btn.getAttribute("data-activity-id");
-        if (!actId) return;
-        if (editingActivities.has(actId)) {
-          editingActivities.delete(actId);
-        } else {
-          editingActivities.add(actId);
-        }
+        openActivityId = "";
         rerender(ctx);
       });
-    });
+    }
 
-    shadow.querySelectorAll(".sn-btn-cancel-act-edit").forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const actId = btn.getAttribute("data-activity-id");
-        if (actId) editingActivities.delete(actId);
-        rerender(ctx);
-      });
-    });
-
-    shadow.querySelectorAll(".sn-btn-save-act-edit").forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
+    const actSave = $("sn-act-save");
+    if (actSave) {
+      actSave.addEventListener("click", (ev) => {
         ev.stopPropagation();
         if (ctx.locked) return;
-        const actId = btn.getAttribute("data-activity-id");
-        if (!actId) return;
-        const formEl = btn.closest(".sn-kanban-edit-box");
-        if (!formEl) return;
-        const titleInput = formEl.querySelector(".sn-edit-title");
-        const assInput = formEl.querySelector(".sn-edit-assignee");
-        const dueInput = formEl.querySelector(".sn-edit-due");
-        const statusSelect = formEl.querySelector(".sn-edit-status");
-
-        const title = titleInput ? String(titleInput.value || "").trim() : "";
+        const form = readActivityFormFrom(shadow);
+        if (!form) return;
+        const title = String(form.title || "").trim();
+        const titleInput = $("sn-act-title");
         if (!title) {
           if (titleInput) titleInput.focus();
           return;
         }
-        const assignee = assInput ? String(assInput.value || "").trim() : "";
-        const due = dueInput ? (toIsoDate(dueInput.value) || "") : "";
-        const statusName = statusSelect ? statusSelect.value : "";
-
-        editingActivities.delete(actId);
-
         if (ctx.onUpdateActivity) {
           ctx.onUpdateActivity({
-            activityId: actId,
+            activityId: openActivityId,
             title,
-            assignee,
-            due,
-            statusName
+            assignee: String(form.assignee || "").trim(),
+            due: form.due ? toIsoDate(form.due) || "" : "",
+            statusName: form.statusName || "",
+            extra: form.extra || {},
+            extraFields: ctx.activityExtraFields || []
           });
         }
       });
-    });
+    }
 
     // Drag & Drop (coluna e ordem na coluna)
     function clearKanbanPlaceholders() {
@@ -3481,9 +3727,10 @@
       clearKanbanPlaceholders();
     }
 
-    shadow.querySelectorAll(".sn-kanban-card:not(.is-editing)").forEach((card) => {
+    shadow.querySelectorAll(".sn-kanban-card").forEach((card) => {
+      let cardDragged = false;
       card.addEventListener("dragstart", (ev) => {
-        if (ctx.locked) {
+        if (ctx.locked || kanbanSort !== "import" || kanbanFilterOverdue || String(kanbanFilterText || "").trim()) {
           ev.preventDefault();
           return;
         }
@@ -3495,6 +3742,7 @@
           ev.preventDefault();
           return;
         }
+        cardDragged = true;
         draggingActivityId = card.getAttribute("data-activity-id") || "";
         const zone = card.closest(".sn-kanban-cards");
         draggingFromStatus = zone ? zone.getAttribute("data-status-name") || "" : "";
@@ -3508,6 +3756,19 @@
       card.addEventListener("dragend", () => {
         card.classList.remove("is-dragging");
         finishKanbanDrag();
+        setTimeout(() => {
+          cardDragged = false;
+        }, 0);
+      });
+      card.addEventListener("click", (ev) => {
+        if (cardDragged) return;
+        if (ev.target && ev.target.closest && ev.target.closest("button, input, textarea, select, a")) {
+          return;
+        }
+        const actId = card.getAttribute("data-activity-id");
+        if (!actId) return;
+        openActivityId = actId;
+        rerender(ctx);
       });
     });
 
@@ -3619,23 +3880,9 @@
         const actId = btn.getAttribute("data-activity-id");
         if (!actId) return;
         if (window.confirm("Excluir esta atividade?")) {
+          if (openActivityId === actId) openActivityId = "";
           if (ctx.onDeleteActivity) ctx.onDeleteActivity(actId);
         }
-      });
-    });
-
-    // Activity Checklist Toggle
-    shadow.querySelectorAll("[data-act-toggle]").forEach((badge) => {
-      badge.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const actId = badge.getAttribute("data-act-toggle");
-        if (!actId) return;
-        if (expandedActivities.has(actId)) {
-          expandedActivities.delete(actId);
-        } else {
-          expandedActivities.add(actId);
-        }
-        rerender(ctx);
       });
     });
 
@@ -3739,6 +3986,11 @@
     const onKey = (ev) => {
       if (ev.key === "Escape") {
         ev.stopPropagation();
+        if (openActivityId) {
+          openActivityId = "";
+          if (current) rerender(current.ctx);
+          return;
+        }
         if (uiMode === "page") return;
         if (uiMode === "panel") {
           if (!panelCollapsed) setCollapsed(true);

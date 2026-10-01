@@ -40,7 +40,9 @@
       status: "",
       processRelation: "",
       assignee: "",
-      due: ""
+      due: "",
+      extra: [],
+      order: []
     },
     activitiesColumnOrder: [],
     processDisplay: "popup",
@@ -70,7 +72,9 @@
     };
     const activitiesMapping = {
       ...DEFAULT_SETTINGS.activitiesMapping,
-      ...prevActMap
+      ...prevActMap,
+      extra: Array.isArray(prevActMap.extra) ? prevActMap.extra.filter(Boolean) : [],
+      order: Array.isArray(prevActMap.order) ? prevActMap.order.filter(Boolean) : []
     };
     return {
       ...DEFAULT_SETTINGS,
@@ -167,7 +171,9 @@
         status: "",
         processRelation: "",
         assignee: "",
-        due: ""
+        due: "",
+        extra: [],
+        order: []
       }
     });
   }

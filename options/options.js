@@ -47,6 +47,7 @@
     selActRelCol: $("#selActRelCol"),
     selActAssigneeCol: $("#selActAssigneeCol"),
     selActDueCol: $("#selActDueCol"),
+    actExtraColumnsBox: $("#actExtraColumnsBox"),
     actStatusPreviewBox: $("#actStatusPreviewBox"),
     actStatusColumnsList: $("#actStatusColumnsList"),
     stActDs: $("#stActDs"),
@@ -437,7 +438,75 @@
       dueProps.map((p) => `<option value="${escapeAttr(p.name)}"${mapping.due === p.name ? " selected" : ""}>${escapeHtml(p.name)} (${escapeHtml(p.type)})</option>`).join("");
 
     renderActStatusPreview(schema, mapping.status);
+    renderActExtraColumns(schema, mapping);
     els.actMappingBox.classList.remove("hidden");
+  }
+
+  function currentActRoleNames() {
+    return {
+      title: els.selActTitleCol ? els.selActTitleCol.value : "",
+      status: els.selActStatusCol ? els.selActStatusCol.value : "",
+      processRelation: els.selActRelCol ? els.selActRelCol.value : "",
+      assignee: els.selActAssigneeCol ? els.selActAssigneeCol.value : "",
+      due: els.selActDueCol ? els.selActDueCol.value : ""
+    };
+  }
+
+  function renderActExtraColumns(schema, mapping) {
+    const box = els.actExtraColumnsBox;
+    if (!box) return;
+    mapping = mapping || {};
+    const roles = currentActRoleNames();
+    const listed = Schema.extraActivityCandidates
+      ? Schema.extraActivityCandidates(schema, roles)
+      : [];
+    const extraSet = new Set(Array.isArray(mapping.extra) ? mapping.extra : []);
+    const orderIndex = {};
+    (Array.isArray(mapping.order) ? mapping.order : []).forEach((id, idx) => {
+      orderIndex[id] = idx;
+    });
+    const rows = listed.map((p, idx) => {
+      const pid = "extra:" + p.name;
+      return {
+        prop: p,
+        pid,
+        inPopup: extraSet.has(p.name),
+        listedIndex: idx
+      };
+    });
+    rows.sort((a, b) => {
+      const as = orderIndex[a.pid] != null ? orderIndex[a.pid] : 1000 + a.listedIndex;
+      const bs = orderIndex[b.pid] != null ? orderIndex[b.pid] : 1000 + b.listedIndex;
+      return as - bs;
+    });
+    if (!rows.length) {
+      box.innerHTML =
+        '<p class="hint" style="margin: 0; font-size: 12px;">Nenhuma coluna extra neste banco. Crie colunas no Notion e clique em Atualizar colunas.</p>';
+      return;
+    }
+    box.innerHTML = rows
+      .map((r, i) => {
+        const p = r.prop;
+        const checked = r.inPopup ? " checked" : "";
+        const pos = i + 1;
+        const upDis = i === 0 ? " disabled" : "";
+        const downDis = i === rows.length - 1 ? " disabled" : "";
+        return `<div class="col-row${r.inPopup ? " in-popup" : ""}" data-name="${escapeAttr(p.name)}" data-pid="${escapeAttr(r.pid)}" style="grid-template-columns: 2fr 1fr 1fr; margin-bottom: 6px;">
+          <div class="col-name" style="display: flex; flex-direction: column;">
+            <strong style="font-size: 13px; color: #1e293b;">${escapeHtml(p.name)}</strong>
+            <em style="font-size: 11px; color: #64748b;">${escapeHtml(p.type)}</em>
+          </div>
+          <label class="col-show" style="display: flex; justify-content: center; align-items: center; margin: 0;">
+            <input type="checkbox" class="col-popup"${checked} style="cursor: pointer; width: 16px; height: 16px; margin: 0;" />
+          </label>
+          <div class="col-ord" style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span class="order-pos" style="font-size: 12px; font-weight: 600; color: #64748b; margin-right: 6px;">${pos}</span>
+            <button type="button" class="btn btn-ghost-dark order-up"${upDis} aria-label="Subir" style="padding: 2px 6px; font-size: 11px;">↑</button>
+            <button type="button" class="btn btn-ghost-dark order-down"${downDis} aria-label="Descer" style="padding: 2px 6px; font-size: 11px;">↓</button>
+          </div>
+        </div>`;
+      })
+      .join("");
   }
 
   function applyActInspected(ds, preferredMapping) {
@@ -460,7 +529,7 @@
     if (!res?.ok) throw new Error(res?.error || "Falha ao inspecionar banco de atividades.");
     applyActInspected(
       res.dataSource,
-      opts?.refresh ? null : settings.activitiesMapping
+      opts?.refresh ? readActMappingFromUi() : settings.activitiesMapping
     );
   }
 
@@ -515,12 +584,25 @@
   }
 
   function readActMappingFromUi() {
+    const extra = [];
+    const order = [];
+    const extraRows = [...document.querySelectorAll("#actExtraColumnsBox .col-row")];
+    extraRows.forEach((row) => {
+      const name = row.getAttribute("data-name");
+      const pid = row.getAttribute("data-pid") || (name ? "extra:" + name : "");
+      if (!name) return;
+      const show = !!(row.querySelector(".col-popup") || {}).checked;
+      if (show) extra.push(name);
+      if (pid) order.push(pid);
+    });
     return {
       title: els.selActTitleCol.value || "",
       status: els.selActStatusCol.value || "",
       processRelation: els.selActRelCol.value || "",
       assignee: els.selActAssigneeCol.value || "",
-      due: els.selActDueCol.value || ""
+      due: els.selActDueCol.value || "",
+      extra,
+      order
     };
   }
 
@@ -1885,11 +1967,50 @@
         setBusy(els.btnRefreshActCols, false);
       }
     });
-    els.selActStatusCol.addEventListener("change", () => {
-      if (currentActSchema) {
-        renderActStatusPreview(currentActSchema, els.selActStatusCol.value);
-      }
+    ["selActTitleCol", "selActStatusCol", "selActRelCol", "selActAssigneeCol", "selActDueCol"].forEach((key) => {
+      const el = els[key];
+      if (!el) return;
+      el.addEventListener("change", () => {
+        if (!currentActSchema) return;
+        if (key === "selActStatusCol") {
+          renderActStatusPreview(currentActSchema, els.selActStatusCol.value);
+        }
+        renderActExtraColumns(currentActSchema, readActMappingFromUi());
+      });
     });
+    if (els.actExtraColumnsBox) {
+      els.actExtraColumnsBox.addEventListener("change", (ev) => {
+        const checkbox = ev.target.closest && ev.target.closest(".col-popup");
+        if (checkbox && currentActSchema) {
+          renderActExtraColumns(currentActSchema, readActMappingFromUi());
+        }
+      });
+      els.actExtraColumnsBox.addEventListener("click", (ev) => {
+        const up = ev.target.closest && ev.target.closest(".order-up");
+        const down = ev.target.closest && ev.target.closest(".order-down");
+        if (!up && !down) return;
+        const row = ev.target.closest(".col-row");
+        if (!row || !els.actExtraColumnsBox.contains(row) || !currentActSchema) return;
+        const mapping = readActMappingFromUi();
+        const pid = row.getAttribute("data-pid") || "";
+        if (!pid) return;
+        const rest = (mapping.order || []).slice();
+        const i = rest.indexOf(pid);
+        if (i < 0) return;
+        if (up && i > 0) {
+          const swap = rest[i - 1];
+          rest[i - 1] = rest[i];
+          rest[i] = swap;
+        }
+        if (down && i < rest.length - 1) {
+          const swap = rest[i + 1];
+          rest[i + 1] = rest[i];
+          rest[i] = swap;
+        }
+        mapping.order = rest;
+        renderActExtraColumns(currentActSchema, mapping);
+      });
+    }
     els.btnDisconnectActDs.addEventListener("click", async () => {
       await SeiNotionStorage.clearActivitiesDataSource();
       currentActSchema = null;
