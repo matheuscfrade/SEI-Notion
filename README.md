@@ -12,8 +12,8 @@ Na **Controle de Processos** e no **processo aberto**:
 
 - um botão **N** ao lado do número (azul se já existe página)
 - o botão abre um **popup** para ver e editar especificação, status, prazo, marcadores, atribuição e observações
-- **Quadro de Atividades (Kanban)**: vincule um banco de dados de atividades conectado ao banco de processos por relação (`Relation`). Cada processo ganha um quadro Kanban com colunas de status e drag & drop. Há busca, filtro de atividades em atraso (cards destacados) e ordenação por quadro/importação, nome ou prazo. Clique no card para abrir os detalhes da atividade (título, responsável, prazo, status, colunas extras e checklist), com opção de voltar ao quadro.
-- **Modelos de processos (atividades e checklists)**: no banco de atividades, crie um modelo com a lista de atividades e, em cada uma, tarefas (`/to-do`). No popup, **Importar atividades** aplica o modelo ao Kanban. Checklists são editados na tela de detalhes da atividade.
+- **Quadro de Atividades (Kanban)**: vincule um banco de dados de atividades conectado ao banco de processos por relação (`Relation`). Cada processo ganha um quadro Kanban com colunas de status e drag & drop. Há busca, filtro de atividades em atraso (cards destacados) e ordenação por quadro/importação, nome ou prazo. Clique no card (ou no badge de checklist) para expandir colunas extras e o checklist no próprio quadro; o lápis edita título, responsável, prazo, status e extras.
+- **Modelos de processos (atividades e checklists)**: no banco de atividades, crie um modelo com a lista de atividades e, em cada uma, tarefas (`/to-do`). No popup, **Importar atividades** aplica o modelo ao Kanban. Checklists são editados no card expandido.
 - **Salvar alterações** atualiza a página existente — não cria outra. Fechar o popup também salva e libera a edição (o badge N para de piscar)
 - se ainda não houver página, o popup tem **Criar página no Notion**
 - **Processos no Notion**: na Controle de Processos, o **N** na barra de comandos abre a lista das páginas do banco. Há filtro para **Processos SEI** e **Processos fora do SEI**; em cada coluna, status e tipo (lista), prazo (`dd/mm/aaaa`) e busca textual nos demais campos. Clicar numa linha destaca o processo e abre o popup (com o Kanban) **por cima da lista**, sem fechá-la. **Novo extra SEI** cria uma página desvinculada do SEI (um número no nome não faz o vínculo; para ligar a um processo real, use a badge N ao lado do número).
@@ -72,7 +72,7 @@ Crie um segundo banco (ex.: *Atividades SEI*), compartilhe com a mesma integraç
   - **Ordem** (sistema, posição dos cards)
 - O título já existe em todo banco Notion
 - Sem o kit: o banco precisa de título, Status (ou Seleção) e Relação com o banco de processos
-- Colunas extras do banco (opcional) podem aparecer nos detalhes da atividade: marque **Mostrar** e ordene, como nas colunas extras de Processos
+- Colunas extras do banco (opcional) aparecem no card do Kanban (recolhido como chips e por inteiro ao expandir): marque **Mostrar** e ordene, como nas colunas extras de Processos
 - **Salvar banco de atividades**
 
 O título da página no Notion usa o número do processo.
@@ -96,6 +96,8 @@ Worker  →  único lugar que chama api.notion.com (a API não tem CORS)
 Mesmo padrão do SEI Blocos / SEI Fluxo: URL do SEI configurável e content scripts só nos hosts autorizados.
 
 ## Versão
+
+**1.0.5** — no Kanban, clique no card ou no badge de checklist expande colunas extras e o checklist no próprio quadro; o lápis edita. Colunas extras marcadas em **Mostrar no card** entram no chip e na expansão.
 
 **1.0.4** — no Kanban: tela de detalhes da atividade (voltar ao quadro), busca, destaque de atraso e ordenação por quadro, nome ou prazo; colunas extras opcionais nas atividades. Processos extra SEI: o nome grava no título; **Novo extra SEI** avisa que um número no nome não vincula — use a badge N ao lado do processo. **Importar atividades** lista os modelos do banco de processos (o checklist vira atividades no quadro).
 

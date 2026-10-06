@@ -151,6 +151,38 @@ assert(
 );
 assert(written.Urgente && written.Urgente.checkbox === false, "grava extra checkbox");
 
+assert(typeof S.activityExtraRows === "function", "activityExtraRows exportada");
+
+const extraRows = S.activityExtraRows(act, defs);
+assert(extraRows.length === 3, "linhas extras seguem o mapping marcado");
+assert(extraRows[0].name === "Prioridade" && extraRows[0].text === "Alta", "Prioridade formatada");
+assert(extraRows[1].name === "Observações" && extraRows[1].text === "Ver anexos", "Observações formatada");
+assert(extraRows[2].name === "Urgente" && extraRows[2].text === "Sim", "checkbox verdadeiro vira Sim");
+
+const emptyRows = S.activityExtraRows({ extra: {} }, defs);
+assert(emptyRows.length === 3, "extras vazios ainda entram no card");
+assert(emptyRows.every((r) => r.text === ""), "texto vazio quando não há valor");
+
+const noActRows = S.activityExtraRows(null, defs);
+assert(noActRows.length === 3 && noActRows[0].text === "", "sem atividade, linhas vazias na ordem das colunas");
+
+const dateRows = S.activityExtraRows(
+  { extra: { Entrega: "2026-04-01", Tags: ["A", "B"], Ok: false } },
+  [
+    { name: "Entrega", type: "date" },
+    { name: "Tags", type: "multi_select" },
+    { name: "Ok", type: "checkbox" },
+    { name: "" }
+  ]
+);
+assert(dateRows.length === 3, "ignora campo sem nome");
+assert(dateRows[0].text === "01/04/2026", "data ISO vira BR");
+assert(dateRows[1].text === "A, B", "multi_select junta nomes");
+assert(dateRows[2].text === "Não", "checkbox falso vira Não");
+
+assert(S.activityExtraRows(act, null).length === 0, "sem colunas extras, nenhuma linha");
+assert(S.activityExtraRows(act, []).length === 0, "lista extra vazia");
+
 if (process.exitCode) {
   process.exit(1);
 }

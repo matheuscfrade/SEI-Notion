@@ -837,7 +837,7 @@
       font-size: 10px;
       font-weight: 600;
       color: #475569;
-      cursor: default;
+      cursor: pointer;
     }
     .sn-kanban-todo-badge:hover {
       background: #e2e8f0;
@@ -847,46 +847,67 @@
       background: #dcfce7;
       color: #15803d;
     }
-    .sn-act-detail {
-      min-height: 0;
+    .sn-kanban-card.is-expanded {
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 1px #bfdbfe;
     }
-    .sn-act-detail-head {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .sn-act-back {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 5px 10px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .sn-act-detail-body {
+    .sn-card-extras {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      padding: 4px 2px 8px;
+      gap: 4px;
+      border-top: 1px solid #f1f5f9;
+      padding-top: 6px;
+      margin-top: 2px;
     }
-    .sn-act-detail-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .sn-act-detail-grid .sn-span2,
-    .sn-act-detail-body > .sn-field {
-      grid-column: 1 / -1;
-    }
-    .sn-act-detail-actions {
+    .sn-card-extra-row {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 4px;
+      flex-direction: column;
+      gap: 1px;
     }
-    @media (max-width: 640px) {
-      .sn-act-detail-grid { grid-template-columns: 1fr; }
+    .sn-card-extra-label {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #94a3b8;
+    }
+    .sn-card-extra-value {
+      font-size: 12px;
+      color: #334155;
+      word-break: break-word;
+    }
+    .sn-card-extra-value.is-empty {
+      color: #cbd5e1;
+    }
+    .sn-kanban-edit-box .sn-field {
+      gap: 2px;
+    }
+    .sn-kanban-edit-box .sn-field span {
+      font-size: 10px;
+    }
+    .sn-kanban-edit-box .sn-field input,
+    .sn-kanban-edit-box .sn-field select,
+    .sn-kanban-edit-box .sn-field textarea,
+    .sn-kanban-edit-box .sn-input {
+      font-size: 12px;
+      padding: 6px 8px;
+      height: 31px;
+    }
+    .sn-kanban-edit-box .sn-field textarea {
+      height: auto;
+      min-height: 48px;
+    }
+    .sn-kanban-edit-box .sn-chips {
+      gap: 4px;
+    }
+    .sn-kanban-edit-box .sn-chip {
+      font-size: 10px;
+      padding: 2px 6px;
+    }
+    .sn-kanban-edit-box .sn-field.sn-check input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      padding: 0;
     }
     .sn-card-checklist {
       border-top: 1px solid #f1f5f9;
@@ -1266,7 +1287,8 @@
   `;
 
   let current = null;
-  let openActivityId = "";
+  const expandedActivities = new Set();
+  const editingActivities = new Set();
   let kanbanFilterText = "";
   let kanbanFilterOverdue = false;
   let kanbanSort = "import";
@@ -1784,7 +1806,8 @@
     } catch (_) {
       form = null;
     }
-    openActivityId = "";
+    expandedActivities.clear();
+    editingActivities.clear();
     kanbanFilterText = "";
     kanbanFilterOverdue = false;
     kanbanSort = "import";
@@ -2349,44 +2372,42 @@
       </div>`;
   }
 
-  function activityExtraOpts() {
+  function activityExtraOpts(actId) {
+    const safe = String(actId || "").replace(/[^a-zA-Z0-9_-]/g, "_");
     return {
-      idPrefix: "sn-act-extra-",
+      idPrefix: "sn-act-extra-" + safe + "-",
       nameAttr: "data-act-extra-name",
       typeAttr: "data-act-extra-type"
     };
   }
 
-  function activityDetailHtml(ctx, act, rawCols, busy, locked) {
-    const freeze = !!busy || !!locked;
-    const dis = freeze ? " disabled" : "";
-    const extraFields = Array.isArray(ctx.activityExtraFields) ? ctx.activityExtraFields : [];
-    const extraValues = (act && act.extra) || {};
-    const extraHtml = extraFields
-      .map((field) =>
-        extraFieldHtml(
-          field,
-          extraValues[field.name],
-          freeze,
-          ctx,
-          false,
-          activityExtraOpts()
-        )
-      )
-      .join("");
-    const Schema = globalThis.SeiNotionSchema;
-    const overdue =
-      Schema && Schema.isActivityOverdue ? Schema.isActivityOverdue(act) : false;
-    const todos = Array.isArray(act.checklist) ? act.checklist : [];
-    const todoCount = act.todoCount || todos.length;
-    const completed = act.todoCompleted || todos.filter((t) => t.checked).length;
-    const statusOpts = rawCols
+  function extraChipHtml(rows) {
+    return (rows || [])
+      .filter((r) => r && r.text)
       .map(
-        (c) =>
-          `<option value="${esc(c.name)}"${(act.statusName || (rawCols[0] && rawCols[0].name) || "") === c.name ? " selected" : ""}>${esc(c.name)}</option>`
+        (r) =>
+          `<span class="sn-kanban-chip" title="${esc(r.name)}">${esc(r.name)}: ${esc(r.text)}</span>`
       )
       .join("");
-    const checklistItems = todos.length
+  }
+
+  function extraRowsHtml(rows) {
+    if (!rows || !rows.length) return "";
+    const items = rows
+      .map((r) => {
+        const empty = !r.text;
+        return `<div class="sn-card-extra-row">
+          <span class="sn-card-extra-label">${esc(r.name)}</span>
+          <span class="sn-card-extra-value${empty ? " is-empty" : ""}">${esc(empty ? "—" : r.text)}</span>
+        </div>`;
+      })
+      .join("");
+    return `<div class="sn-card-extras">${items}</div>`;
+  }
+
+  function checklistHtml(act, dis) {
+    const todos = Array.isArray(act.checklist) ? act.checklist : [];
+    const items = todos.length
       ? todos
           .map(
             (t) => `
@@ -2397,52 +2418,14 @@
             </div>`
           )
           .join("")
-      : '<span style="font-size: 11px; color: #94a3b8;">Sem itens no checklist.</span>';
-
-    return `
-      <div class="sn-kanban-section sn-act-detail">
-        <div class="sn-kanban-head sn-act-detail-head">
-          <button type="button" id="sn-act-back" class="sn-btn sn-btn-ghost sn-act-back">← Voltar ao quadro</button>
-          <span class="sn-kanban-title">Detalhes da atividade</span>
-          ${overdue ? '<span class="sn-kanban-chip is-overdue">Em atraso</span>' : ""}
-        </div>
-        <div class="sn-act-detail-body">
-          <label class="sn-field">
-            <span>Título</span>
-            <input id="sn-act-title" class="sn-input" type="text" placeholder="Título *" value="${esc(act.title)}" maxlength="2000" ${dis} />
-          </label>
-          <div class="sn-act-detail-grid">
-            <label class="sn-field">
-              <span>Responsável</span>
-              <input id="sn-act-assignee" class="sn-input" type="text" placeholder="Responsável" value="${esc(act.assignee || "")}" maxlength="200" ${dis} />
-            </label>
-            <label class="sn-field">
-              <span>Prazo</span>
-              ${dateInputHtml("sn-act-due", "", act.due, dis, "")}
-            </label>
-            <label class="sn-field">
-              <span>Status</span>
-              <select id="sn-act-status" class="sn-input" ${dis}>${statusOpts}</select>
-            </label>
-          </div>
-          ${extraHtml}
-          <div class="sn-field">
-            <span>Checklist${todoCount ? " (" + completed + "/" + todoCount + ")" : ""}</span>
-            <div class="sn-card-checklist">
-              ${checklistItems}
-              <div class="sn-card-todo-add">
-                <input type="text" placeholder="Novo item" data-act-id="${esc(act.activityId)}" maxlength="2000"${dis} />
-                <button type="button" class="sn-btn-card-add-todo" data-act-id="${esc(act.activityId)}"${dis}>+</button>
-              </div>
-            </div>
-          </div>
-          <div class="sn-act-detail-actions">
-            <button type="button" id="sn-act-save" class="sn-btn sn-btn-primary" ${dis}>Salvar atividade</button>
-            <button type="button" id="sn-act-delete" class="sn-btn sn-btn-ghost sn-kanban-card-del" data-activity-id="${esc(act.activityId)}" ${dis}>Excluir</button>
-          </div>
-        </div>
+      : '<span style="font-size: 10px; color: #94a3b8;">Sem itens no checklist.</span>';
+    return `<div class="sn-card-checklist">
+      ${items}
+      <div class="sn-card-todo-add">
+        <input type="text" placeholder="Novo item" data-act-id="${esc(act.activityId)}" maxlength="2000"${dis} />
+        <button type="button" class="sn-btn-card-add-todo" data-act-id="${esc(act.activityId)}"${dis}>+</button>
       </div>
-    `;
+    </div>`;
   }
 
   function kanbanHtml(ctx, page, busy, locked) {
@@ -2482,6 +2465,7 @@
     const templates = Array.isArray(ctx.templates) ? ctx.templates : [];
     const freeze = !!busy || !!locked;
     const dis = freeze ? " disabled" : "";
+    const extraFields = Array.isArray(ctx.activityExtraFields) ? ctx.activityExtraFields : [];
     const canDrag =
       !freeze &&
       kanbanSort === "import" &&
@@ -2510,14 +2494,6 @@
         { id: "Em Andamento", name: "Em Andamento", color: "blue" },
         { id: "Concluído", name: "Concluído", color: "green" }
       );
-    }
-
-    if (openActivityId) {
-      const openAct = activitiesAll.find((a) => a && a.activityId === openActivityId);
-      if (openAct) {
-        return activityDetailHtml(ctx, openAct, rawCols, busy, locked);
-      }
-      openActivityId = "";
     }
 
     const colMap = {};
@@ -2585,6 +2561,49 @@
         const cardsHtml = items.length
           ? items
               .map((act) => {
+                if (editingActivities.has(act.activityId)) {
+                  const extraValues = (act && act.extra) || {};
+                  const extraEditHtml = extraFields
+                    .map((field) =>
+                      extraFieldHtml(
+                        field,
+                        extraValues[field.name],
+                        freeze,
+                        ctx,
+                        false,
+                        activityExtraOpts(act.activityId)
+                      )
+                    )
+                    .join("");
+                  const statusOpts = rawCols
+                    .map(
+                      (c) =>
+                        `<option value="${esc(c.name)}"${(act.statusName || (rawCols[0] && rawCols[0].name) || "") === c.name ? " selected" : ""}>${esc(c.name)}</option>`
+                    )
+                    .join("");
+                  return `
+                    <div class="sn-kanban-card is-editing" data-activity-id="${esc(act.activityId)}">
+                      <div class="sn-kanban-edit-box">
+                        <span style="font-size: 11px; font-weight: 800; color: #1e3a8a;">Editar atividade</span>
+                        <input class="sn-kanban-input sn-edit-title" type="text" placeholder="Título *" value="${esc(act.title)}" maxlength="2000" ${dis} />
+                        <input class="sn-kanban-input sn-edit-assignee" type="text" placeholder="Responsável" value="${esc(act.assignee || "")}" maxlength="200" ${dis} />
+                        ${dateInputHtml("", "", act.due, dis, "sn-kanban-date-wrap")}
+                        <select class="sn-kanban-input sn-edit-status" ${dis}>${statusOpts}</select>
+                        ${extraEditHtml}
+                        <div style="display: flex; gap: 6px; margin-top: 4px;">
+                          <button type="button" class="sn-btn sn-btn-primary sn-btn-save-act-edit" data-activity-id="${esc(act.activityId)}" style="padding: 5px 12px; font-size: 11px;" ${dis}>Salvar</button>
+                          <button type="button" class="sn-btn sn-btn-ghost sn-btn-cancel-act-edit" data-activity-id="${esc(act.activityId)}" style="padding: 5px 10px; font-size: 11px;">Cancelar</button>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }
+
+                const isExpanded = expandedActivities.has(act.activityId);
+                const extraRows =
+                  Schema && Schema.activityExtraRows
+                    ? Schema.activityExtraRows(act, extraFields)
+                    : [];
                 const todos = Array.isArray(act.checklist) ? act.checklist : [];
                 const todoCount = act.todoCount || todos.length;
                 const completed =
@@ -2600,23 +2619,32 @@
                 const cardClass =
                   "sn-kanban-card" +
                   (overdue ? " is-overdue" : "") +
+                  (isExpanded ? " is-expanded" : "") +
                   (canDrag ? "" : " is-nodrag");
+                const expandTitle = isExpanded
+                  ? "Recolher detalhes"
+                  : overdue
+                    ? "Em atraso — ver detalhes"
+                    : "Ver detalhes";
 
                 return `
-                  <div class="${cardClass}" draggable="${canDrag ? "true" : "false"}" data-activity-id="${esc(act.activityId)}" title="${overdue ? "Em atraso — abrir detalhes" : "Abrir detalhes"}">
+                  <div class="${cardClass}" draggable="${canDrag ? "true" : "false"}" data-activity-id="${esc(act.activityId)}" title="${expandTitle}">
                     <div class="sn-kanban-card-top">
                       <span class="sn-kanban-card-title">${esc(act.title)}</span>
                       <div class="sn-kanban-card-actions">
+                        <button type="button" class="sn-kanban-card-btn sn-kanban-card-edit" data-activity-id="${esc(act.activityId)}" title="Editar atividade" draggable="false"${dis}>✏️</button>
                         <button type="button" class="sn-kanban-card-btn sn-kanban-card-del" data-activity-id="${esc(act.activityId)}" title="Excluir atividade" draggable="false"${dis}>×</button>
                       </div>
                     </div>
                     <div class="sn-kanban-card-meta">
-                      <span class="sn-kanban-todo-badge${doneClass}" title="Checklist">
+                      <span class="sn-kanban-todo-badge${doneClass}" data-act-toggle="${esc(act.activityId)}" title="${isExpanded ? "Recolher checklist" : "Ver checklist"}">
                         <span>✓</span> ${esc(badgeText)}
                       </span>
                       ${act.assignee ? `<span class="sn-kanban-chip" title="Atribuição / Responsável">👤 ${esc(act.assignee)}</span>` : ""}
                       ${act.due ? `<span class="sn-kanban-chip${overdue ? " is-overdue" : ""}" title="${overdue ? "Prazo em atraso" : "Prazo"}">${overdue ? "⚠ " : "📅 "}${esc(dateValue(act.due))}</span>` : ""}
+                      ${isExpanded ? "" : extraChipHtml(extraRows)}
                     </div>
+                    ${isExpanded ? extraRowsHtml(extraRows) + checklistHtml(act, dis) : ""}
                   </div>
                 `;
               })
@@ -2748,15 +2776,10 @@
       .replace(/"/g, "&quot;");
   }
 
-  function readActivityFormFrom(shadow) {
-    if (!shadow) return null;
-    const titleEl = shadow.getElementById("sn-act-title");
-    if (!titleEl) return null;
-    const assEl = shadow.getElementById("sn-act-assignee");
-    const dueEl = shadow.getElementById("sn-act-due");
-    const statusEl = shadow.getElementById("sn-act-status");
+  function readActivityExtraFrom(scope) {
     const extra = {};
-    shadow.querySelectorAll("[data-act-extra-type]").forEach((el) => {
+    if (!scope) return extra;
+    scope.querySelectorAll("[data-act-extra-type]").forEach((el) => {
       const name = el.getAttribute("data-act-extra-name");
       const type = el.getAttribute("data-act-extra-type");
       if (!name) return;
@@ -2769,31 +2792,16 @@
       else if (type === "date") extra[name] = el.value ? (toIsoDate(el.value) || parseDateBr(el.value) || "") : "";
       else extra[name] = el.value !== "" ? el.value : "";
     });
-    return {
-      title: titleEl.value || "",
-      assignee: assEl ? assEl.value : "",
-      due: dueEl ? dueEl.value : "",
-      statusName: statusEl ? statusEl.value : "",
-      extra
-    };
+    return extra;
   }
 
-  function restoreActivityForm(shadow, draft) {
-    if (!shadow || !draft) return;
-    const titleEl = shadow.getElementById("sn-act-title");
-    const assEl = shadow.getElementById("sn-act-assignee");
-    const dueEl = shadow.getElementById("sn-act-due");
-    const statusEl = shadow.getElementById("sn-act-status");
-    if (titleEl && draft.title) titleEl.value = draft.title;
-    if (assEl && draft.assignee != null) assEl.value = draft.assignee;
-    if (dueEl && draft.due) dueEl.value = draft.due;
-    if (statusEl && draft.statusName) statusEl.value = draft.statusName;
-    if (!draft.extra) return;
-    shadow.querySelectorAll("[data-act-extra-type]").forEach((el) => {
+  function restoreActivityExtra(scope, extra) {
+    if (!scope || !extra) return;
+    scope.querySelectorAll("[data-act-extra-type]").forEach((el) => {
       const name = el.getAttribute("data-act-extra-name");
       const type = el.getAttribute("data-act-extra-type");
-      if (!name || !(name in draft.extra)) return;
-      const value = draft.extra[name];
+      if (!name || !(name in extra)) return;
+      const value = extra[name];
       if (type === "checkbox") el.checked = !!value;
       else if (type === "multi_select") {
         const selected = new Set(Array.isArray(value) ? value : []);
@@ -2804,6 +2812,34 @@
         el.value = type === "date" ? formatBrDate(value) || value : value;
       }
     });
+  }
+
+  function readActivityEditFrom(formEl) {
+    if (!formEl) return null;
+    const titleEl = formEl.querySelector(".sn-edit-title");
+    const assEl = formEl.querySelector(".sn-edit-assignee");
+    const dueEl = formEl.querySelector(".sn-date-input");
+    const statusEl = formEl.querySelector(".sn-edit-status");
+    return {
+      title: titleEl ? titleEl.value || "" : "",
+      assignee: assEl ? assEl.value : "",
+      due: dueEl ? dueEl.value : "",
+      statusName: statusEl ? statusEl.value : "",
+      extra: readActivityExtraFrom(formEl)
+    };
+  }
+
+  function restoreActivityEdit(formEl, draft) {
+    if (!formEl || !draft) return;
+    const titleEl = formEl.querySelector(".sn-edit-title");
+    const assEl = formEl.querySelector(".sn-edit-assignee");
+    const dueEl = formEl.querySelector(".sn-date-input");
+    const statusEl = formEl.querySelector(".sn-edit-status");
+    if (titleEl && draft.title) titleEl.value = draft.title;
+    if (assEl && draft.assignee != null) assEl.value = draft.assignee;
+    if (dueEl && draft.due) dueEl.value = draft.due;
+    if (statusEl && draft.statusName) statusEl.value = draft.statusName;
+    restoreActivityExtra(formEl, draft.extra);
   }
 
   function saveUiState(shadow) {
@@ -2849,9 +2885,14 @@
       status: shadow.getElementById("sn-new-act-status") ? shadow.getElementById("sn-new-act-status").value : ""
     };
 
-    const activityDetailDraft = shadow.getElementById("sn-act-title")
-      ? readActivityFormFrom(shadow)
-      : null;
+    const editingDrafts = {};
+    shadow.querySelectorAll(".sn-kanban-card.is-editing").forEach((card) => {
+      const actId = card.getAttribute("data-activity-id");
+      if (!actId) return;
+      const formEl = card.querySelector(".sn-kanban-edit-box");
+      const draft = readActivityEditFrom(formEl);
+      if (draft) editingDrafts[actId] = draft;
+    });
 
     return {
       modalScrollTop,
@@ -2863,7 +2904,7 @@
       activeSelector,
       activeCursor,
       newActDraft,
-      activityDetailDraft
+      editingDrafts
     };
   }
 
@@ -2907,8 +2948,13 @@
         if (sEl && state.newActDraft.status && !sEl.value) sEl.value = state.newActDraft.status;
       }
 
-      if (state.activityDetailDraft && shadow.getElementById("sn-act-title")) {
-        restoreActivityForm(shadow, state.activityDetailDraft);
+      if (state.editingDrafts) {
+        shadow.querySelectorAll(".sn-kanban-card.is-editing").forEach((card) => {
+          const actId = card.getAttribute("data-activity-id");
+          const draft = state.editingDrafts[actId];
+          if (!draft) return;
+          restoreActivityEdit(card.querySelector(".sn-kanban-edit-box"), draft);
+        });
       }
 
       if (state.activeSelector) {
@@ -3616,31 +3662,46 @@
       }
     });
 
-    const actBack = $("sn-act-back");
-    if (actBack) {
-      actBack.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        openActivityId = "";
-        rerender(ctx);
-      });
-    }
-
-    const actSave = $("sn-act-save");
-    if (actSave) {
-      actSave.addEventListener("click", (ev) => {
+    shadow.querySelectorAll(".sn-kanban-card-edit").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         if (ctx.locked) return;
-        const form = readActivityFormFrom(shadow);
+        const actId = btn.getAttribute("data-activity-id");
+        if (!actId) return;
+        if (editingActivities.has(actId)) editingActivities.delete(actId);
+        else editingActivities.add(actId);
+        rerender(ctx);
+      });
+    });
+
+    shadow.querySelectorAll(".sn-btn-cancel-act-edit").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const actId = btn.getAttribute("data-activity-id");
+        if (actId) editingActivities.delete(actId);
+        rerender(ctx);
+      });
+    });
+
+    shadow.querySelectorAll(".sn-btn-save-act-edit").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (ctx.locked) return;
+        const actId = btn.getAttribute("data-activity-id");
+        if (!actId) return;
+        const formEl = btn.closest(".sn-kanban-edit-box");
+        const form = readActivityEditFrom(formEl);
         if (!form) return;
         const title = String(form.title || "").trim();
-        const titleInput = $("sn-act-title");
+        const titleInput = formEl ? formEl.querySelector(".sn-edit-title") : null;
         if (!title) {
           if (titleInput) titleInput.focus();
           return;
         }
+        editingActivities.delete(actId);
         if (ctx.onUpdateActivity) {
           ctx.onUpdateActivity({
-            activityId: openActivityId,
+            activityId: actId,
             title,
             assignee: String(form.assignee || "").trim(),
             due: form.due ? toIsoDate(form.due) || "" : "",
@@ -3650,7 +3711,7 @@
           });
         }
       });
-    }
+    });
 
     // Drag & Drop (coluna e ordem na coluna)
     function clearKanbanPlaceholders() {
@@ -3727,7 +3788,7 @@
       clearKanbanPlaceholders();
     }
 
-    shadow.querySelectorAll(".sn-kanban-card").forEach((card) => {
+    shadow.querySelectorAll(".sn-kanban-card:not(.is-editing)").forEach((card) => {
       let cardDragged = false;
       card.addEventListener("dragstart", (ev) => {
         if (ctx.locked || kanbanSort !== "import" || kanbanFilterOverdue || String(kanbanFilterText || "").trim()) {
@@ -3737,7 +3798,7 @@
         if (
           ev.target &&
           ev.target.closest &&
-          ev.target.closest("button, input, textarea, select, a, .sn-card-checklist")
+          ev.target.closest("button, input, textarea, select, a, .sn-card-checklist, .sn-card-extras")
         ) {
           ev.preventDefault();
           return;
@@ -3762,12 +3823,19 @@
       });
       card.addEventListener("click", (ev) => {
         if (cardDragged) return;
-        if (ev.target && ev.target.closest && ev.target.closest("button, input, textarea, select, a")) {
+        if (
+          ev.target &&
+          ev.target.closest &&
+          ev.target.closest(
+            "button, input, textarea, select, a, .sn-card-checklist, .sn-card-todo-add, .sn-card-extras"
+          )
+        ) {
           return;
         }
         const actId = card.getAttribute("data-activity-id");
         if (!actId) return;
-        openActivityId = actId;
+        if (expandedActivities.has(actId)) expandedActivities.delete(actId);
+        else expandedActivities.add(actId);
         rerender(ctx);
       });
     });
@@ -3880,9 +3948,21 @@
         const actId = btn.getAttribute("data-activity-id");
         if (!actId) return;
         if (window.confirm("Excluir esta atividade?")) {
-          if (openActivityId === actId) openActivityId = "";
+          editingActivities.delete(actId);
+          expandedActivities.delete(actId);
           if (ctx.onDeleteActivity) ctx.onDeleteActivity(actId);
         }
+      });
+    });
+
+    shadow.querySelectorAll("[data-act-toggle]").forEach((badge) => {
+      badge.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const actId = badge.getAttribute("data-act-toggle");
+        if (!actId) return;
+        if (expandedActivities.has(actId)) expandedActivities.delete(actId);
+        else expandedActivities.add(actId);
+        rerender(ctx);
       });
     });
 
@@ -3986,11 +4066,6 @@
     const onKey = (ev) => {
       if (ev.key === "Escape") {
         ev.stopPropagation();
-        if (openActivityId) {
-          openActivityId = "";
-          if (current) rerender(current.ctx);
-          return;
-        }
         if (uiMode === "page") return;
         if (uiMode === "panel") {
           if (!panelCollapsed) setCollapsed(true);
@@ -4137,7 +4212,7 @@
     const freeze = !!busy || !!current.ctx.locked;
     current.shadow
       .querySelectorAll(
-        "input, textarea, select, button.sn-btn-primary, button.sn-kanban-card-del, #sn-new-act-btn, .sn-btn-card-add-todo, #sn-act-tpl-btn"
+        "input, textarea, select, button.sn-btn-primary, button.sn-kanban-card-del, button.sn-kanban-card-edit, #sn-new-act-btn, .sn-btn-card-add-todo, #sn-act-tpl-btn"
       )
       .forEach((el) => {
         if (el.id === "sn-sei-info" || el.id === "sn-other-info") return;

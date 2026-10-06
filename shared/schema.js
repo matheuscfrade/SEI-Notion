@@ -1362,6 +1362,19 @@
       .filter(Boolean);
   }
 
+  function activityExtraRows(act, extraFields) {
+    const fields = Array.isArray(extraFields) ? extraFields : [];
+    const extra = act && act.extra && typeof act.extra === "object" ? act.extra : {};
+    return fields
+      .filter((f) => f && f.name)
+      .map((f) => ({
+        name: f.name,
+        type: f.type || "rich_text",
+        value: extra[f.name],
+        text: formatCellValue(extra[f.name])
+      }));
+  }
+
   function findRelationProperty(schema, targetDatabaseId) {
     const props = listProperties(schema);
     const normTarget = targetDatabaseId
@@ -1676,6 +1689,7 @@
     extraActivityNames,
     extraActivityCandidates,
     extraActivityFieldDefs,
+    activityExtraRows,
     EXTRA_TYPES,
     ROLE_KEYS,
     SEI_READONLY_ROLES,
