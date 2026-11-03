@@ -4193,7 +4193,7 @@
         );
       } else if (type === "number") extra[name] = el.value === "" ? null : el.value;
       else if (type === "date") extra[name] = el.value ? (toIsoDate(el.value) || parseDateBr(el.value) || "") : "";
-      else extra[name] = el.value !== "" ? el.value : (extra[name] !== undefined ? extra[name] : "");
+      else extra[name] = el.value != null ? el.value : "";
     });
     out.extra = extra;
     out.extraFields = (ctx && ctx.extraFields) || [];

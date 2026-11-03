@@ -97,6 +97,8 @@ Mesmo padrão do SEI Blocos / SEI Fluxo: URL do SEI configurável e content scri
 
 ## Versão
 
+**1.0.6** — apagar um campo extra do processo (por exemplo Anotações) grava vazio no Notion. Antes a extensão reenviava o texto antigo.
+
 **1.0.5** — no Kanban, clique no card ou no badge de checklist expande colunas extras e o checklist no próprio quadro; o lápis edita. Colunas extras marcadas em **Mostrar no card** entram no chip e na expansão.
 
 **1.0.4** — no Kanban: tela de detalhes da atividade (voltar ao quadro), busca, destaque de atraso e ordenação por quadro, nome ou prazo; colunas extras opcionais nas atividades. Processos extra SEI: o nome grava no título; **Novo extra SEI** avisa que um número no nome não vincula — use a badge N ao lado do processo. **Importar atividades** lista os modelos do banco de processos (o checklist vira atividades no quadro).

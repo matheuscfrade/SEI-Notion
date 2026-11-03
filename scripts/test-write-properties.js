@@ -282,5 +282,36 @@ assert(
   "popupFields não inclui due (oculto em hiddenRoles)"
 );
 
+const clearedExtra = S.writeProperties(
+  {
+    ...S.emptyMapping(),
+    title: "Nome",
+    extra: ["Anotações"]
+  },
+  { title: "title", _titleColumn: "Nome" },
+  {
+    name: "Processo",
+    extra: { Anotações: "" },
+    extraFields: [{ name: "Anotações", type: "rich_text" }]
+  }
+);
+assert(
+  clearedExtra["Anotações"] &&
+    Array.isArray(clearedExtra["Anotações"].rich_text) &&
+    clearedExtra["Anotações"].rich_text.length === 0,
+  "campo extra vazio apaga o rich_text no Notion"
+);
+
+const popupSrc = fs.readFileSync(
+  path.join(__dirname, "../content/popup.js"),
+  "utf8"
+);
+assert(
+  popupSrc.indexOf(
+    'extra[name] !== undefined ? extra[name]'
+  ) === -1,
+  "ler o formulário não restaura anotação antiga quando o campo foi apagado"
+);
+
 if (process.exitCode) console.error("test-write-properties failed");
 else console.log("test-write-properties passed");
